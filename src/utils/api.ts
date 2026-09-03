@@ -1,49 +1,63 @@
-// Frankfurter API: free, CORS-friendly, no proxy needed
-// Does not support TWD, so we fetch TWD via Yahoo Finance on native only,
-// and use a fixed fallback on web.
+import { Platform } from 'react-native';
+import { AVAILABLE_CURRENCIES } from './mockData';
 
-const FRANKFURTER_BASE = 'https://api.frankfurter.app';
+// On web, Yahoo Finance blocks browser requests (CORS).
+// We use open.er-api.com which is free and fully CORS-enabled.
+// On native (iOS/Android), we continue using Yahoo Finance for real-time data.
 
-// Currencies supported by Frankfurter
-const FRANKFURTER_SUPPORTED = ['USD','EUR','JPY','CNY','MYR','GBP','AUD','PHP','TRY','HKD','SGD','KRW','INR','THB'];
-
-export const fetchRates = async (baseCurrency: string = 'USD') => {
+const fetchWebRates = async (baseCurrency: string): Promise<Record<string, number> | null> => {
   try {
-    // Use Frankfurter for all supported currencies (CORS-safe)
-    const res = await fetch(`${FRANKFURTER_BASE}/latest?from=USD`);
+    const res = await fetch(`https://open.er-api.com/v6/latest/USD`);
     const json = await res.json();
+    if (json.result !== 'success') return null;
 
-    if (!json.rates) return null;
+    const usdRates: Record<string, number> = json.rates;
+    usdRates['USD'] = 1;
 
-    // Frankfurter returns rates relative to EUR by default if USD not base,
-    // but we asked from=USD so json.rates = { EUR: 0.86, JPY: 145, ... }
-    const rates: Record<string, number> = {
-      USD: 1,
-      ...json.rates,
-    };
+    if (baseCurrency === 'USD') return usdRates;
 
-    // TWD is not in Frankfurter — use Yahoo Finance on native, skip on web
-    if (!rates['TWD']) {
-      try {
-        const twdRes = await fetch('https://query1.finance.yahoo.com/v8/finance/chart/TWD=X?range=1d&interval=1m');
-        const twdJson = await twdRes.json();
-        if (twdJson.chart?.result?.[0]?.meta?.regularMarketPrice) {
-          rates['TWD'] = twdJson.chart.result[0].meta.regularMarketPrice;
-        }
-      } catch {
-        rates['TWD'] = 32.5; // reasonable fallback if everything fails
-      }
+    const baseRate = usdRates[baseCurrency];
+    if (!baseRate) return null;
+
+    const normalized: Record<string, number> = {};
+    for (const [code, rate] of Object.entries(usdRates)) {
+      normalized[code] = (rate as number) / baseRate;
     }
+    return normalized;
+  } catch (e) {
+    console.error('Web rate fetch failed', e);
+    return null;
+  }
+};
 
-    // Normalize if the requested base is not USD
+const fetchNativeRates = async (baseCurrency: string): Promise<Record<string, number> | null> => {
+  try {
+    const rates: Record<string, number> = { USD: 1 };
+
+    const fetchPromises = AVAILABLE_CURRENCIES
+      .filter(c => c.value !== 'USD')
+      .map(async (currency) => {
+        try {
+          const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${currency.value}=X?range=1d&interval=1m`);
+          const json = await res.json();
+          if (json.chart.result && json.chart.result.length > 0) {
+            rates[currency.value] = json.chart.result[0].meta.regularMarketPrice;
+          }
+        } catch (e) {
+          console.warn(`Failed to fetch rate for ${currency.value}`);
+        }
+      });
+
+    await Promise.all(fetchPromises);
+
     if (baseCurrency !== 'USD') {
       const baseRate = rates[baseCurrency];
       if (!baseRate) return null;
-      const normalizedRates: Record<string, number> = {};
+      const normalized: Record<string, number> = {};
       for (const [code, rate] of Object.entries(rates)) {
-        normalizedRates[code] = rate / baseRate;
+        normalized[code] = rate / baseRate;
       }
-      return normalizedRates;
+      return normalized;
     }
 
     return rates;
@@ -51,4 +65,11 @@ export const fetchRates = async (baseCurrency: string = 'USD') => {
     console.error('Error fetching rates', error);
     return null;
   }
+};
+
+export const fetchRates = async (baseCurrency: string = 'USD') => {
+  if (Platform.OS === 'web') {
+    return fetchWebRates(baseCurrency);
+  }
+  return fetchNativeRates(baseCurrency);
 };
