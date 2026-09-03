@@ -129,9 +129,6 @@ export default function Watchlist() {
 
   const calculateAmount = (targetCode: string): string => {
     if (targetCode === baseCurrency) {
-      // If it's the active input, format it only if it doesn't end with a dot, 
-      // but if they just typed it, let them keep typing. 
-      // It will auto-format to 4 decimals when they blur!
       return formatThousands(baseAmount);
     }
     

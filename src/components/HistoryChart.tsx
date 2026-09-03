@@ -7,7 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { PinchGestureHandler, State, PinchGestureHandlerGestureEvent, PinchGestureHandlerStateChangeEvent } from 'react-native-gesture-handler';
 
 import { AVAILABLE_CURRENCIES } from '../utils/mockData';
-import { fetchRealHistory, Timeframe, ChartDataPoint } from '../utils/historyApi';
+import { fetchHistory, Timeframe, ChartDataPoint } from '../utils/historyApi';
 
 const TIMEFRAMES: Timeframe[] = ['1D', '1W', '1M', '3M', '6M', '1Y', '5Y', '10Y'];
 
@@ -61,7 +61,7 @@ export default function HistoryChart() {
   const loadData = async () => {
     setLoading(true);
     
-    const history = await fetchRealHistory(baseCurrency, targetCurrency, timeframe);
+    const history = await fetchHistory(baseCurrency, targetCurrency, timeframe);
     
     if (history.length > 0) {
       const minVal = Math.min(...history.map(d => d.value));

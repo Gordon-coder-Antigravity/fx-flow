@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Platform } from 'react-native';
 import { ScaleDecorator } from 'react-native-draggable-flatlist';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { 
@@ -67,7 +67,7 @@ export default function CurrencyItem({ item, drag, isActive, onRemove, isBase, a
       <Animated.View style={[styles.container, animatedStyle]}>
         {isBase && <View style={styles.baseIndicator} />}
         
-        <TouchableOpacity onLongPress={drag} delayLongPress={100} style={styles.dragHandle}>
+        <TouchableOpacity onPressIn={drag} style={styles.dragHandle}>
           <Ionicons name="menu-outline" size={24} color="#8A99AF" />
         </TouchableOpacity>
 
@@ -82,7 +82,7 @@ export default function CurrencyItem({ item, drag, isActive, onRemove, isBase, a
             value={amount}
             onChangeText={(text) => onChangeAmount(item.code, text)}
             onBlur={onBlurFormat}
-            keyboardType="numeric"
+            keyboardType={Platform.OS === 'web' ? 'default' : 'numeric'}
             returnKeyType="done"
             selectTextOnFocus
             numberOfLines={1}
