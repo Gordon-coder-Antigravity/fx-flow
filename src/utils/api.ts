@@ -1,4 +1,7 @@
+import { Platform } from 'react-native';
 import { AVAILABLE_CURRENCIES } from './mockData';
+
+const PROXY = Platform.OS === 'web' ? 'https://corsproxy.io/?' : '';
 
 // Fetch live market data for all supported currencies from Yahoo Finance
 export const fetchRates = async (baseCurrency: string = 'USD') => {
@@ -9,7 +12,9 @@ export const fetchRates = async (baseCurrency: string = 'USD') => {
       .filter(c => c.value !== 'USD')
       .map(async (currency) => {
         try {
-          const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${currency.value}=X?range=1d&interval=1m`);
+          const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${currency.value}=X?range=1d&interval=1m`;
+          const fetchUrl = Platform.OS === 'web' ? `${PROXY}${encodeURIComponent(targetUrl)}` : targetUrl;
+          const res = await fetch(fetchUrl);
           const json = await res.json();
           if (json.chart.result && json.chart.result.length > 0) {
             rates[currency.value] = json.chart.result[0].meta.regularMarketPrice;

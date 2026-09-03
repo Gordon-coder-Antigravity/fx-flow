@@ -1,3 +1,7 @@
+import { Platform } from 'react-native';
+
+const PROXY = Platform.OS === 'web' ? 'https://corsproxy.io/?' : '';
+
 export type Timeframe = '1D' | '1W' | '1M' | '3M' | '6M' | '1Y' | '5Y' | '10Y';
 
 export type ChartDataPoint = {
@@ -25,7 +29,9 @@ export const fetchRealHistory = async (baseCode: string, targetCode: string, tim
 
   const fetchSymbol = async (code: string) => {
     if (code === 'USD') return null; // USD is always 1
-    const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${code}=X?range=${range}&interval=${interval}`);
+    const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${code}=X?range=${range}&interval=${interval}`;
+    const fetchUrl = Platform.OS === 'web' ? `${PROXY}${encodeURIComponent(targetUrl)}` : targetUrl;
+    const res = await fetch(fetchUrl);
     const json = await res.json();
     if (json.chart.result && json.chart.result.length > 0) {
       return json.chart.result[0];

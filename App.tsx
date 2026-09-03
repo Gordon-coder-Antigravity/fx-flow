@@ -7,12 +7,20 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { useFonts } from 'expo-font';
+
 import Watchlist from './src/components/Watchlist';
 import HistoryChart from './src/components/HistoryChart';
 
 const Tab = createBottomTabNavigator();
 
 export default function App() {
+  const [fontsLoaded] = useFonts({
+    Ionicons: require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf'),
+  });
+
+  if (!fontsLoaded) return null;
+
   return (
     <SafeAreaProvider>
       <GestureHandlerRootView style={styles.container}>
