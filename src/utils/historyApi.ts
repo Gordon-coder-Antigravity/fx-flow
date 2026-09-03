@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 
-const PROXY = Platform.OS === 'web' ? 'https://api.allorigins.win/raw?url=' : '';
+const PROXY = Platform.OS === 'web' ? 'https://corsproxy.io/?' : '';
 
 export type Timeframe = '1D' | '1W' | '1M' | '3M' | '6M' | '1Y' | '5Y' | '10Y';
 

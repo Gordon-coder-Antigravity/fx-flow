@@ -17,7 +17,6 @@ const Tab = createBottomTabNavigator();
 export default function App() {
   const [fontsLoaded] = useFonts({
     Ionicons: require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf'),
-    ionicons: require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf'),
   });
 
   if (!fontsLoaded) return null;

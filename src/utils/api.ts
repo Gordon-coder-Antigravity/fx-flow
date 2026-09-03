@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import { AVAILABLE_CURRENCIES } from './mockData';
 
-const PROXY = Platform.OS === 'web' ? 'https://api.allorigins.win/raw?url=' : '';
+const PROXY = Platform.OS === 'web' ? 'https://corsproxy.io/?' : '';
 
 // Fetch live market data for all supported currencies from Yahoo Finance
 export const fetchRates = async (baseCurrency: string = 'USD') => {
