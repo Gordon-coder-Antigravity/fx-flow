@@ -85,7 +85,6 @@ export default function CurrencyItem({ item, drag, isActive, onRemove, isBase, a
             keyboardType="numeric"
             returnKeyType="done"
             selectTextOnFocus
-            adjustsFontSizeToFit={true}
             numberOfLines={1}
           />
           <TouchableOpacity onPress={() => onRemove(item.id)} style={styles.removeButton}>

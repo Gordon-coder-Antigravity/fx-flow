@@ -30,42 +30,33 @@ export default function Watchlist() {
 
   const loadRates = async () => {
     setLoading(true);
-    const data = await fetchRates(API_BASE_CURRENCY);
-    if (data) {
-      setRates(data);
-      
-      let savedCodes = INITIAL_WATCHLIST;
-      try {
-        const storedWatchlist = await AsyncStorage.getItem('saved_watchlist');
-        if (storedWatchlist) {
-          savedCodes = JSON.parse(storedWatchlist);
-        }
-        const storedBase = await AsyncStorage.getItem('saved_baseCurrency');
-        if (storedBase) setBaseCurrency(storedBase);
 
-        const storedAmount = await AsyncStorage.getItem('saved_baseAmount');
-        if (storedAmount) {
-          const num = parseFloat(storedAmount);
-          setBaseAmount(!isNaN(num) ? num.toFixed(4) : '1.0000');
-        } else {
-          setBaseAmount('1.0000');
-        }
-      } catch (e) {
-        console.error('Failed to load saved state', e);
+    // Always load watchlist first (regardless of whether rates succeed)
+    let savedCodes = INITIAL_WATCHLIST;
+    try {
+      const storedWatchlist = await AsyncStorage.getItem('saved_watchlist');
+      if (storedWatchlist) savedCodes = JSON.parse(storedWatchlist);
+      const storedBase = await AsyncStorage.getItem('saved_baseCurrency');
+      if (storedBase) setBaseCurrency(storedBase);
+      const storedAmount = await AsyncStorage.getItem('saved_baseAmount');
+      if (storedAmount) {
+        const num = parseFloat(storedAmount);
+        setBaseAmount(!isNaN(num) ? num.toFixed(4) : '1.0000');
       }
-
-      // Initialize watchlist metadata
-      const initialData = savedCodes.map(code => {
-        const info = AVAILABLE_CURRENCIES.find(c => c.value === code) || { label: code, symbol: '' };
-        return {
-          id: code,
-          code,
-          name: info.label.split(' - ')[1] || code,
-          symbol: info.symbol,
-        };
-      });
-      setWatchlist(initialData);
+    } catch (e) {
+      // AsyncStorage may not work on web — that's fine, use defaults
     }
+
+    const initialData = savedCodes.map(code => {
+      const info = AVAILABLE_CURRENCIES.find(c => c.value === code) || { label: code, symbol: '' };
+      return { id: code, code, name: info.label.split(' - ')[1] || code, symbol: (info as any).symbol || '' };
+    });
+    setWatchlist(initialData);
+
+    // Then fetch rates
+    const data = await fetchRates(API_BASE_CURRENCY);
+    if (data) setRates(data);
+
     setLoading(false);
   };
 
