@@ -227,9 +227,10 @@ export default function HistoryChart() {
 
   const handleTouchStart = (e: any) => {
     const touches = e.nativeEvent?.touches;
-    if (touches && touches.length === 2) {
+    if (touches && touches.length >= 2) {
       initialPinchDistance.current = getTouchDistance(touches);
       initialZoom.current = zoomLevel;
+      clearHighlight(); // Hide tooltip immediately on multi-touch
     } else {
       initialPinchDistance.current = null;
       const x = getEventX(e);
@@ -239,7 +240,8 @@ export default function HistoryChart() {
 
   const handleTouchMove = (e: any) => {
     const touches = e.nativeEvent?.touches;
-    if (touches && touches.length === 2 && initialPinchDistance.current) {
+    if (touches && touches.length >= 2 && initialPinchDistance.current) {
+      clearHighlight(); // Ensure tooltip stays hidden during zoom
       const currentDist = getTouchDistance(touches);
       const ratio = currentDist / initialPinchDistance.current;
       const newZoom = Math.max(1, Math.min(3, Math.round(initialZoom.current * ratio * 10) / 10));
@@ -469,7 +471,10 @@ export default function HistoryChart() {
                   {/* Layer 1B: Touch Overlay exclusively for chart body (prevents panning, handles scrubber & zoom) */}
                   <View 
                     ref={chartInnerViewRef}
-                    style={{ position: 'absolute', top: 0, left: 0, width: chartContentWidth, height: chartHeight }}
+                    style={[
+                      { position: 'absolute', top: 0, left: 0, width: chartContentWidth, height: chartHeight },
+                      Platform.OS === 'web' ? { touchAction: 'none' } as any : {}
+                    ]}
                     onStartShouldSetResponder={() => true}
                     onMoveShouldSetResponder={() => true}
                     onResponderGrant={handleTouchStart}
@@ -710,6 +715,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     justifyContent: 'center',
     paddingBottom: 12,
+    ...(Platform.OS === 'web' ? { touchAction: 'none' } : {}),
   },
   loadingWrapper: {
     flex: 1,
@@ -730,6 +736,7 @@ const styles = StyleSheet.create({
       WebkitOverflowScrolling: 'touch',
       cursor: 'grab',
       userSelect: 'none',
+      touchAction: 'pan-x',
     } : {}),
   },
   // Layer 2: Absolute-positioned pinned Y-axis overlay permanently on top of the view on the right
