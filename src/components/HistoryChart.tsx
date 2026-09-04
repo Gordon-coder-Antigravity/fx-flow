@@ -38,6 +38,12 @@ export default function HistoryChart() {
     date: string;
   } | null>(null);
 
+  const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const isPointerDown = useRef(false);
+  const chartInnerViewRef = useRef<View>(null);
+  const initialPinchDistance = useRef<number | null>(null);
+  const initialZoom = useRef<number>(1);
+
   const horizontalScrollRef = useRef<ScrollView>(null);
   const isDragging = useRef(false);
   const startX = useRef(0);
@@ -53,10 +59,11 @@ export default function HistoryChart() {
   const screenWidth = Dimensions.get('window').width;
 
   useEffect(() => {
+    setSelectedPoint(null);
     loadData();
   }, [baseCurrency, targetCurrency, timeframe]);
 
-  // Scroll to the latest data point on the right whenever data loads
+  // Scroll to the latest data point on the right whenever data loads or zoom changes
   useEffect(() => {
     if (chartData.length > 0) {
       const timer = setTimeout(() => {
@@ -72,7 +79,7 @@ export default function HistoryChart() {
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [chartData, timeframe]);
+  }, [chartData, timeframe, zoomLevel]);
 
   const handleMouseDown = (e: any) => {
     if (Platform.OS !== 'web') return;
@@ -124,17 +131,7 @@ export default function HistoryChart() {
       const isUp = latestRate >= firstRate;
       setTrendColor(isUp ? '#00E676' : '#FF3D00');
 
-      const formattedData = history.map((d, index) => {
-        const isLast = index === history.length - 1;
-        return {
-          ...d,
-          hideDataPoint: !isLast,
-          dataPointColor: '#2962FF',
-          dataPointRadius: isLast ? 4 : 0,
-        };
-      });
-
-      setChartData(formattedData);
+      setChartData(history);
     } else {
       setChartData([]);
     }
@@ -143,9 +140,22 @@ export default function HistoryChart() {
   };
 
   const handleSwap = () => {
+    setSelectedPoint(null);
     const temp = baseCurrency;
     setBaseCurrency(targetCurrency);
     setTargetCurrency(temp);
+  };
+
+  const handleZoomIn = () => {
+    setZoomLevel(prev => Math.min(3, Math.round((prev + 0.5) * 10) / 10));
+  };
+
+  const handleZoomOut = () => {
+    setZoomLevel(prev => Math.max(1, Math.round((prev - 0.5) * 10) / 10));
+  };
+
+  const handleZoomReset = () => {
+    setZoomLevel(1);
   };
 
   const onChartContainerLayout = (e: LayoutChangeEvent) => {
@@ -157,37 +167,26 @@ export default function HistoryChart() {
     }
   };
 
-  // Wide minimum width (800px) so data stretches out legibly for horizontal swiping
-  const chartContentWidth = Math.max(800, chartData.length * 48);
+  // Base content width: at least screenWidth or 800px, scaled by zoomLevel
+  const baseContentWidth = Math.max(800, chartData.length * 48);
+  const chartContentWidth = Math.round(baseContentWidth * zoomLevel);
   const calculatedSpacing = chartData.length > 1
-    ? Math.max(36, Math.floor((chartContentWidth - 126) / (chartData.length - 1)))
+    ? Math.max(24, Math.floor((chartContentWidth - 126) / (chartData.length - 1)))
     : 40;
 
-  // Set the latest point as active whenever chart data loads or geometry updates
-  useEffect(() => {
-    if (chartData.length > 0) {
-      const lastIdx = chartData.length - 1;
-      const lastItem = chartData[lastIdx];
-      const norm = maxYValue > 0 ? (lastItem.value - yAxisOffset) / maxYValue : 0.5;
-      const ptY = Math.max(15, Math.min(chartHeight - 15, chartHeight - norm * chartHeight));
-      const ptX = 50 + lastIdx * calculatedSpacing;
-      setSelectedPoint({
-        index: lastIdx,
-        x: ptX,
-        y: ptY,
-        value: lastItem.value,
-        date: lastItem.date,
-      });
-    }
-  }, [chartData, chartHeight, calculatedSpacing, maxYValue, yAxisOffset]);
+  const updateHighlightAtX = (rawX: number) => {
+    if (chartData.length === 0) return;
+    const index = Math.max(0, Math.min(chartData.length - 1, Math.round((rawX - 50) / calculatedSpacing)));
+    const item = chartData[index];
+    if (!item) return;
 
-  const handlePointPress = (item: ChartDataPoint, index: number, colX: number) => {
     const norm = maxYValue > 0 ? (item.value - yAxisOffset) / maxYValue : 0.5;
     const ptY = Math.max(15, Math.min(chartHeight - 15, chartHeight - norm * chartHeight));
-    
+    const ptX = 50 + index * calculatedSpacing;
+
     setSelectedPoint({
       index,
-      x: colX,
+      x: ptX,
       y: ptY,
       value: item.value,
       date: item.date,
@@ -200,6 +199,77 @@ export default function HistoryChart() {
       setPercentChange(((item.value - firstRate) / (firstRate || 1)) * 100);
       setTrendColor(item.value >= firstRate ? '#00E676' : '#FF3D00');
     }
+  };
+
+  const getEventX = (e: any): number => {
+    if (Platform.OS === 'web') {
+      const nativeEvt = e.nativeEvent || e;
+      const clientX = nativeEvt.touches?.[0]?.clientX ?? nativeEvt.clientX;
+      if (typeof clientX === 'number' && chartInnerViewRef.current) {
+        const node = (chartInnerViewRef.current as any);
+        if (node?.getBoundingClientRect) {
+          const rect = node.getBoundingClientRect();
+          return clientX - rect.left;
+        }
+      }
+      if (typeof nativeEvt.offsetX === 'number') {
+        return nativeEvt.offsetX;
+      }
+    }
+    return e.nativeEvent?.locationX ?? (e.nativeEvent?.touches?.[0]?.locationX ?? 50);
+  };
+
+  const getTouchDistance = (touches: any[]) => {
+    const dx = (touches[0]?.clientX ?? touches[0]?.pageX ?? 0) - (touches[1]?.clientX ?? touches[1]?.pageX ?? 0);
+    const dy = (touches[0]?.clientY ?? touches[0]?.pageY ?? 0) - (touches[1]?.clientY ?? touches[1]?.pageY ?? 0);
+    return Math.hypot(dx, dy);
+  };
+
+  const handleTouchStart = (e: any) => {
+    const touches = e.nativeEvent?.touches;
+    if (touches && touches.length === 2) {
+      initialPinchDistance.current = getTouchDistance(touches);
+      initialZoom.current = zoomLevel;
+    } else {
+      initialPinchDistance.current = null;
+      const x = getEventX(e);
+      updateHighlightAtX(x);
+    }
+  };
+
+  const handleTouchMove = (e: any) => {
+    const touches = e.nativeEvent?.touches;
+    if (touches && touches.length === 2 && initialPinchDistance.current) {
+      const currentDist = getTouchDistance(touches);
+      const ratio = currentDist / initialPinchDistance.current;
+      const newZoom = Math.max(1, Math.min(3, Math.round(initialZoom.current * ratio * 10) / 10));
+      setZoomLevel(newZoom);
+    } else {
+      const x = getEventX(e);
+      updateHighlightAtX(x);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    initialPinchDistance.current = null;
+  };
+
+  const handlePointerDown = (e: any) => {
+    if (Platform.OS !== 'web') return;
+    isPointerDown.current = true;
+    const x = getEventX(e);
+    updateHighlightAtX(x);
+  };
+
+  const handlePointerMove = (e: any) => {
+    if (Platform.OS !== 'web' || !isPointerDown.current) return;
+    const x = getEventX(e);
+    updateHighlightAtX(x);
+  };
+
+  const handlePointerUp = () => {
+    if (Platform.OS !== 'web') return;
+    isPointerDown.current = false;
   };
 
   // Compute 5 fixed Y-axis labels matching the 4 grid line sections
@@ -260,7 +330,7 @@ export default function HistoryChart() {
         </View>
       </View>
 
-      {/* Rate Display */}
+      {/* Rate Display and Zoom Controls */}
       <View style={styles.rateDisplayContainer}>
         <Text 
           style={styles.singleLineRate} 
@@ -273,16 +343,44 @@ export default function HistoryChart() {
           <Text style={styles.mainRateTarget}> {targetCurrency}</Text>
         </Text>
         
-        <View style={styles.changeContainer}>
-          <Ionicons 
-            name={percentChange >= 0 ? 'arrow-up' : 'arrow-down'} 
-            size={14} 
-            color={trendColor} 
-          />
-          <Text style={[styles.changeText, { color: trendColor }]}>
-            {Math.abs(percentChange).toFixed(2)}%
-          </Text>
-          <Text style={styles.dateText}>{lastDate}</Text>
+        <View style={styles.rateSubRow}>
+          <View style={styles.changeContainer}>
+            <Ionicons 
+              name={percentChange >= 0 ? 'arrow-up' : 'arrow-down'} 
+              size={14} 
+              color={trendColor} 
+            />
+            <Text style={[styles.changeText, { color: trendColor }]}>
+              {Math.abs(percentChange).toFixed(2)}%
+            </Text>
+            <Text style={styles.dateText}>{lastDate}</Text>
+          </View>
+
+          {/* Interactive Zoom In / Out Controls */}
+          <View style={styles.zoomControlContainer}>
+            <TouchableOpacity 
+              onPress={handleZoomOut}
+              disabled={zoomLevel <= 1}
+              style={[styles.zoomBtn, zoomLevel <= 1 && styles.zoomBtnDisabled]}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="remove" size={14} color={zoomLevel <= 1 ? '#5C6B89' : '#FFFFFF'} />
+            </TouchableOpacity>
+            <Text style={styles.zoomText}>{zoomLevel.toFixed(1)}x</Text>
+            <TouchableOpacity 
+              onPress={handleZoomIn}
+              disabled={zoomLevel >= 3}
+              style={[styles.zoomBtn, zoomLevel >= 3 && styles.zoomBtnDisabled]}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="add" size={14} color={zoomLevel >= 3 ? '#5C6B89' : '#FFFFFF'} />
+            </TouchableOpacity>
+            {zoomLevel > 1 && (
+              <TouchableOpacity onPress={handleZoomReset} style={styles.zoomResetBtn}>
+                <Text style={styles.zoomResetText}>Reset</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       </View>
 
@@ -316,7 +414,19 @@ export default function HistoryChart() {
                   onMouseLeave: handleMouseUp,
                 } : {})}
               >
-                <View style={{ width: chartContentWidth, height: chartHeight + 40, position: 'relative' }}>
+                <View 
+                  ref={chartInnerViewRef}
+                  style={{ width: chartContentWidth, height: chartHeight + 40, position: 'relative' }}
+                  onTouchStart={handleTouchStart}
+                  onTouchMove={handleTouchMove}
+                  onTouchEnd={handleTouchEnd}
+                  {...(Platform.OS === 'web' ? {
+                    onMouseDown: handlePointerDown,
+                    onMouseMove: handlePointerMove,
+                    onMouseUp: handlePointerUp,
+                    onMouseLeave: handlePointerUp,
+                  } : {})}
+                >
                   {/* Layer 1A: Underlying SVG line chart and X-axis dates */}
                   <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, width: chartContentWidth }}>
                     <LineChart
@@ -332,6 +442,8 @@ export default function HistoryChart() {
                       endFillColor="#2962FF"
                       startOpacity={0.25}
                       endOpacity={0.01}
+                      interpolateMissingValues={true}
+                      extrapolateMissingValues={true}
                       hideYAxisText={true}
                       yAxisLabelWidth={0}
                       yAxisThickness={0}
@@ -343,9 +455,7 @@ export default function HistoryChart() {
                       noOfSections={4}
                       rulesColor="#1A253C"
                       rulesType="dotted"
-                      hideDataPoints={false}
-                      dataPointsRadius={3}
-                      dataPointsColor="#2962FF"
+                      hideDataPoints={true}
                       maintainAspectRatio={false}
                       disableScroll={true}
                       xAxisLabelsHeight={24}
@@ -362,7 +472,7 @@ export default function HistoryChart() {
                     />
                   </View>
 
-                  {/* Layer 1B: Vertical guideline for active point */}
+                  {/* Layer 1B: Vertical guideline for active point (rendered only when tapped/sliding) */}
                   {selectedPoint && (
                     <View
                       pointerEvents="none"
@@ -370,7 +480,7 @@ export default function HistoryChart() {
                     />
                   )}
 
-                  {/* Layer 1C: Active highlighted dot */}
+                  {/* Layer 1C: Active highlighted dot (rendered only when tapped/sliding) */}
                   {selectedPoint && (
                     <View
                       pointerEvents="none"
@@ -383,7 +493,7 @@ export default function HistoryChart() {
                     </View>
                   )}
 
-                  {/* Layer 1D: Tooltip component explicitly imported and rendered inside the chart */}
+                  {/* Layer 1D: Interactive Tooltip component (rendered only when tapped/sliding) */}
                   {selectedPoint && (
                     <Tooltip
                       visible={true}
@@ -397,29 +507,6 @@ export default function HistoryChart() {
                       chartWidth={chartContentWidth}
                     />
                   )}
-
-                  {/* Layer 1E: Mobile-friendly touch targets across each column so tapping near line triggers label */}
-                  <View style={styles.touchOverlay}>
-                    {chartData.map((d, index) => {
-                      const colX = 50 + index * calculatedSpacing;
-                      const colWidth = calculatedSpacing;
-                      return (
-                        <TouchableOpacity
-                          key={index}
-                          activeOpacity={1}
-                          onPress={() => handlePointPress(d, index, colX)}
-                          style={[
-                            styles.touchColumn,
-                            {
-                              left: colX - colWidth / 2,
-                              width: colWidth,
-                              height: chartHeight + 30,
-                            },
-                          ]}
-                        />
-                      );
-                    })}
-                  </View>
                 </View>
               </ScrollView>
 
@@ -532,6 +619,52 @@ const styles = StyleSheet.create({
   mainRateTarget: {
     color: '#8A99AF',
     fontSize: 20,
+  },
+  rateSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  zoomControlContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1C1C1E',
+    borderRadius: 16,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: '#2C2C2E',
+  },
+  zoomBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#2C2C2E',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  zoomBtnDisabled: {
+    opacity: 0.4,
+  },
+  zoomText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+    paddingHorizontal: 4,
+  },
+  zoomResetBtn: {
+    marginLeft: 2,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    backgroundColor: 'rgba(41, 98, 255, 0.2)',
+  },
+  zoomResetText: {
+    color: '#2962FF',
+    fontSize: 11,
+    fontWeight: '600',
   },
   changeContainer: {
     flexDirection: 'row',

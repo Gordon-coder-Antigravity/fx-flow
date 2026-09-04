@@ -54,7 +54,7 @@ function getTickIndices(total: number, maxTicks: number = 4): Set<number> {
   return tickIndices;
 }
 
-// Web version: uses fawazahmed0/currency-api on jsdelivr CDN (supports all currencies including TWD, CORS-enabled)
+// Web version: uses fawazahmed0/currency-api with pages.dev fallback and Frankfurter for older history
 const fetchWebHistory = async (baseCode: string, targetCode: string, timeframe: Timeframe): Promise<ChartDataPoint[]> => {
   try {
     const endDate = new Date();
@@ -63,7 +63,7 @@ const fetchWebHistory = async (baseCode: string, targetCode: string, timeframe: 
     let maxPoints = 20;
 
     switch (timeframe) {
-      case '1D': startDate.setDate(endDate.getDate() - 2); maxPoints = 3; break;
+      case '1D': startDate.setDate(endDate.getDate() - 2); maxPoints = 4; break;
       case '1W': startDate.setDate(endDate.getDate() - 7); maxPoints = 7; break;
       case '1M': startDate.setMonth(endDate.getMonth() - 1); maxPoints = 15; break;
       case '3M': startDate.setMonth(endDate.getMonth() - 3); maxPoints = 18; break;
@@ -77,10 +77,14 @@ const fetchWebHistory = async (baseCode: string, targetCode: string, timeframe: 
     const baseLower = baseCode.toLowerCase();
     const targetLower = targetCode.toLowerCase();
 
+    // Fetch primary source with fallback CDN
     const fetchPromises = dates.map(async (d) => {
       try {
-        const url = `https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@${d}/v1/currencies/usd.json`;
-        const res = await fetch(url);
+        let res = await fetch(`https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@${d}/v1/currencies/usd.json`);
+        if (!res.ok) {
+          // Fallback to Cloudflare Pages CDN
+          res = await fetch(`https://${d}.currency-api.pages.dev/v1/currencies/usd.json`);
+        }
         if (!res.ok) return null;
         const data = await res.json();
         const baseRate = baseLower === 'usd' ? 1 : (data.usd?.[baseLower] || 1);
@@ -99,28 +103,92 @@ const fetchWebHistory = async (baseCode: string, targetCode: string, timeframe: 
         const today = new Date().toISOString().split('T')[0];
         return { dateStr: today, rate: targetRate / baseRate };
       })
-      .catch(() => null);
+      .catch(async () => {
+        try {
+          const r = await fetch('https://latest.currency-api.pages.dev/v1/currencies/usd.json');
+          const data = await r.json();
+          const baseRate = baseLower === 'usd' ? 1 : (data.usd?.[baseLower] || 1);
+          const targetRate = targetLower === 'usd' ? 1 : (data.usd?.[targetLower] || 1);
+          const today = new Date().toISOString().split('T')[0];
+          return { dateStr: today, rate: targetRate / baseRate };
+        } catch {
+          return null;
+        }
+      });
 
     const rawResults = await Promise.all([...fetchPromises, latestPromise]);
     const results = rawResults.filter((r): r is { dateStr: string; rate: number } => r !== null && !isNaN(r.rate));
-    results.sort((a, b) => a.dateStr.localeCompare(b.dateStr));
 
-    const unique: { dateStr: string; rate: number }[] = [];
-    const seen = new Set<string>();
-    for (const r of results) {
-      if (!seen.has(r.dateStr)) {
-        seen.add(r.dateStr);
-        unique.push(r);
+    // For 5Y and 10Y dates before April 2024, supplement with Frankfurter API if needed
+    if (['5Y', '10Y'].includes(timeframe) && baseLower !== 'twd' && targetLower !== 'twd') {
+      try {
+        const startStr = dates[0];
+        const endStr = '2024-04-01';
+        const frankRes = await fetch(`https://api.frankfurter.dev/v1/${startStr}..${endStr}?from=${baseCode.toUpperCase()}&to=${targetCode.toUpperCase()}`);
+        if (frankRes.ok) {
+          const frankJson = await frankRes.json();
+          const targetUpper = targetCode.toUpperCase();
+          const availableFrankDates = Object.keys(frankJson.rates || {}).sort();
+          for (const d of dates) {
+            if (d < '2024-04-01') {
+              // Exact match or closest previous trading day
+              if (frankJson.rates?.[d]?.[targetUpper]) {
+                results.push({ dateStr: d, rate: frankJson.rates[d][targetUpper] });
+              } else {
+                const prevDates = availableFrankDates.filter(fd => fd <= d);
+                if (prevDates.length > 0) {
+                  const closest = prevDates[prevDates.length - 1];
+                  results.push({ dateStr: d, rate: frankJson.rates[closest][targetUpper] });
+                }
+              }
+            }
+          }
+        }
+      } catch (e) {
+        // Fallback gracefully
       }
     }
 
-    if (unique.length === 0) return [];
+    results.sort((a, b) => a.dateStr.localeCompare(b.dateStr));
+
+    const dateMap = new Map<string, number>();
+    for (const r of results) {
+      if (!dateMap.has(r.dateStr)) {
+        dateMap.set(r.dateStr, r.rate);
+      }
+    }
+
+    if (dateMap.size === 0) return [];
+
+    // Find the first known rate to anchor backward/forward interpolation
+    let runningRate = 1;
+    for (const d of dates) {
+      if (dateMap.has(d)) {
+        runningRate = dateMap.get(d)!;
+        break;
+      }
+    }
+
+    // Guarantee 100% continuous data with zero gaps or nulls for every date
+    const continuousData: { dateStr: string; rate: number }[] = [];
+    for (const d of dates) {
+      if (dateMap.has(d)) {
+        runningRate = dateMap.get(d)!;
+      }
+      continuousData.push({ dateStr: d, rate: runningRate });
+    }
+
+    // Add latest point
+    const today = new Date().toISOString().split('T')[0];
+    if (dateMap.has(today)) {
+      continuousData.push({ dateStr: today, rate: dateMap.get(today)! });
+    }
 
     // Distribute date labels evenly across the wide slidable X-axis
-    const tickCount = Math.min(8, Math.max(4, Math.floor(unique.length / 3)));
-    const tickIndices = getTickIndices(unique.length, tickCount);
+    const tickCount = Math.min(8, Math.max(4, Math.floor(continuousData.length / 3)));
+    const tickIndices = getTickIndices(continuousData.length, tickCount);
 
-    const dataPoints: ChartDataPoint[] = unique.map((r, index) => {
+    const dataPoints: ChartDataPoint[] = continuousData.map((r, index) => {
       const d = new Date(r.dateStr + 'T00:00:00');
       const label = tickIndices.has(index) ? formatEnglishLabel(d, timeframe) : '';
 
