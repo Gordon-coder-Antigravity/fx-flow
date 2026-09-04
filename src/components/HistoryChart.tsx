@@ -250,8 +250,21 @@ export default function HistoryChart() {
     }
   };
 
+  const clearHighlight = () => {
+    setSelectedPoint(null);
+    if (chartData.length > 0) {
+      const firstRate = chartData[0].value;
+      const latestRate = chartData[chartData.length - 1].value;
+      setCurrentRate(latestRate);
+      setPercentChange(((latestRate - firstRate) / (firstRate || 1)) * 100);
+      setLastDate(chartData[chartData.length - 1].date);
+      setTrendColor(latestRate >= firstRate ? '#00E676' : '#FF3D00');
+    }
+  };
+
   const handleTouchEnd = () => {
     initialPinchDistance.current = null;
+    clearHighlight();
   };
 
   const handlePointerDown = (e: any) => {
@@ -274,6 +287,7 @@ export default function HistoryChart() {
     if (Platform.OS !== 'web') return;
     if (e.stopPropagation) e.stopPropagation();
     isPointerDown.current = false;
+    clearHighlight();
   };
 
   const handleWheel = (e: any) => {
@@ -373,31 +387,6 @@ export default function HistoryChart() {
             <Text style={styles.dateText}>{lastDate}</Text>
           </View>
 
-          {/* Interactive Zoom In / Out Controls */}
-          <View style={styles.zoomControlContainer}>
-            <TouchableOpacity 
-              onPress={handleZoomOut}
-              disabled={zoomLevel <= 1}
-              style={[styles.zoomBtn, zoomLevel <= 1 && styles.zoomBtnDisabled]}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Ionicons name="remove" size={14} color={zoomLevel <= 1 ? '#5C6B89' : '#FFFFFF'} />
-            </TouchableOpacity>
-            <Text style={styles.zoomText}>{zoomLevel.toFixed(1)}x</Text>
-            <TouchableOpacity 
-              onPress={handleZoomIn}
-              disabled={zoomLevel >= 3}
-              style={[styles.zoomBtn, zoomLevel >= 3 && styles.zoomBtnDisabled]}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Ionicons name="add" size={14} color={zoomLevel >= 3 ? '#5C6B89' : '#FFFFFF'} />
-            </TouchableOpacity>
-            {zoomLevel > 1 && (
-              <TouchableOpacity onPress={handleZoomReset} style={styles.zoomResetBtn}>
-                <Text style={styles.zoomResetText}>Reset</Text>
-              </TouchableOpacity>
-            )}
-          </View>
         </View>
       </View>
 
