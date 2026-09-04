@@ -6,6 +6,7 @@ export type ChartDataPoint = {
   value: number;
   label?: string;
   date: string;
+  timestamp: number;
 };
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -196,6 +197,7 @@ const fetchWebHistory = async (baseCode: string, targetCode: string, timeframe: 
         value: parseFloat(r.rate.toFixed(4)),
         label,
         date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        timestamp: Math.floor(d.getTime() / 1000),
       };
     });
 
@@ -279,6 +281,7 @@ const fetchNativeHistory = async (baseCode: string, targetCode: string, timefram
           hour: timeframe === '1D' ? '2-digit' : undefined,
           minute: timeframe === '1D' ? '2-digit' : undefined,
         }),
+        timestamp: Math.floor(date.getTime() / 1000),
       });
     }
 
