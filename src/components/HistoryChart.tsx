@@ -22,7 +22,7 @@ export default function HistoryChart() {
   const [targetCurrency, setTargetCurrency] = useState('EUR');
   const [timeframe, setTimeframe] = useState<Timeframe>('1W');
   
-  const [chartData, setChartData] = useState<any[]>([]);
+  const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [loading, setLoading] = useState(true);
   
   const [currentRate, setCurrentRate] = useState(1);
@@ -32,6 +32,7 @@ export default function HistoryChart() {
 
   const [zoomScale, setZoomScale] = useState(1);
   const baseScale = useRef(1);
+  const horizontalScrollRef = useRef<ScrollView>(null);
 
   // Dynamic chart height to fill remaining vertical space
   const [chartHeight, setChartHeight] = useState(240);
@@ -60,6 +61,16 @@ export default function HistoryChart() {
     baseScale.current = 1;
     loadData();
   }, [baseCurrency, targetCurrency, timeframe]);
+
+  // Scroll to the latest data point on the right whenever data loads
+  useEffect(() => {
+    if (horizontalScrollRef.current && chartData.length > 0) {
+      const timer = setTimeout(() => {
+        horizontalScrollRef.current?.scrollToEnd({ animated: false });
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [chartData, timeframe]);
 
   const loadData = async () => {
     setLoading(true);
@@ -110,21 +121,31 @@ export default function HistoryChart() {
     setTargetCurrency(temp);
   };
 
-  const getSpacing = () => {
-    if (chartData.length <= 1) return 20;
-    const availableWidth = screenWidth - 100;
-    const computed = availableWidth / Math.max(1, chartData.length - 1);
-    return Math.max(computed, 20);
-  };
-
   const onChartContainerLayout = (e: LayoutChangeEvent) => {
     const { height } = e.nativeEvent.layout;
     if (height > 0) {
-      // Reserve ~40px for X-axis labels and padding
+      // Reserve ~40px for X-axis labels and bottom padding
       const dynamicHeight = Math.max(160, Math.floor(height - 40));
       setChartHeight(dynamicHeight);
     }
   };
+
+  // Wide minimum width (e.g., 800px) so line stretches out comfortably for mobile swiping
+  const baseWidth = Math.max(800, chartData.length * 36);
+  const chartContentWidth = Math.floor(baseWidth * zoomScale);
+  const calculatedSpacing = chartData.length > 1
+    ? Math.floor((chartContentWidth - 40) / (chartData.length - 1))
+    : 40;
+
+  // Compute 5 fixed Y-axis labels matching the 4 grid line sections
+  const yStep = maxYValue / 4;
+  const yAxisLabels = [
+    (yAxisOffset + maxYValue).toFixed(4),
+    (yAxisOffset + yStep * 3).toFixed(4),
+    (yAxisOffset + yStep * 2).toFixed(4),
+    (yAxisOffset + yStep).toFixed(4),
+    yAxisOffset.toFixed(4),
+  ];
 
   return (
     <View 
@@ -213,72 +234,91 @@ export default function HistoryChart() {
               <Text style={{ color: '#8A99AF' }}>No data available for this pair.</Text>
             </View>
           ) : (
-            <PinchGestureHandler
-              onGestureEvent={onPinchEvent}
-              onHandlerStateChange={onPinchStateChange}
-            >
-              <View style={{ width: screenWidth - 20 }}>
-                <LineChart
-                  data={chartData}
-                  width={screenWidth - 85}
-                  height={chartHeight}
-                  spacing={getSpacing() * zoomScale}
-                  initialSpacing={15}
-                  endSpacing={15}
-                  scrollToEnd={true}
-                  color="#2962FF"
-                  thickness={2.5}
-                  startFillColor="#2962FF"
-                  endFillColor="#2962FF"
-                  startOpacity={0.25}
-                  endOpacity={0.01}
-                  yAxisColor="transparent"
-                  xAxisColor="transparent"
-                  yAxisSide={1} 
-                  yAxisLabelWidth={60} 
-                  yAxisOffset={yAxisOffset}
-                  maxValue={maxYValue}
-                  noOfSections={4}
-                  yAxisTextStyle={{ color: '#5C6B89', fontSize: 11, textAlign: 'right', paddingRight: 4 }}
-                  // X-Axis Configuration: Upright (0 rotation), extra bottom padding to prevent clipping
-                  xAxisLabelsHeight={24}
-                  labelsExtraHeight={16}
-                  overflowBottom={24}
-                  xAxisLabelTextStyle={{ 
-                    color: '#5C6B89', 
-                    fontSize: 11, 
-                    width: 76, 
-                    textAlign: 'center', 
-                    marginLeft: -28,
-                    transform: [{ rotate: '0deg' }]
-                  }}
-                  formatYLabel={(label) => Number(label).toFixed(4)}
-                  rulesColor="#1A253C"
-                  rulesType="dotted"
-                  hideDataPoints={false}
-                  {...({ maintainAspectRatio: false } as any)}
-                  pointerConfig={{
-                    pointerStripHeight: chartHeight,
-                    pointerStripColor: '#5C6B89',
-                    pointerStripWidth: 1,
-                    pointerColor: '#2962FF',
-                    radius: 5,
-                    pointerLabelWidth: 110,
-                    pointerLabelHeight: 80,
-                    activatePointersOnLongPress: true,
-                    autoAdjustPointerLabelPosition: true,
-                    pointerLabelComponent: (items: any) => {
-                      return (
-                        <View style={styles.tooltipContainer}>
-                          <Text style={styles.tooltipDate}>{items[0].date}</Text>
-                          <Text style={styles.tooltipValue}>{items[0].value.toFixed(4)}</Text>
-                        </View>
-                      );
-                    },
-                  }}
-                />
+            /* Split layout: Fixed Y-axis container on left + Horizontally scrollable chart on right */
+            <View style={styles.splitChartLayout}>
+              {/* Fixed container on the left for the Y-axis (price labels pinned on screen) */}
+              <View style={[styles.fixedYAxisContainer, { height: chartHeight }]}>
+                {yAxisLabels.map((val, idx) => (
+                  <View key={idx} style={styles.yAxisLabelRow}>
+                    <Text style={styles.fixedYAxisText}>{val}</Text>
+                  </View>
+                ))}
               </View>
-            </PinchGestureHandler>
+
+              {/* Overflow-x container on the right for the chart line and X-axis (min-width: 800px) */}
+              <PinchGestureHandler
+                onGestureEvent={onPinchEvent}
+                onHandlerStateChange={onPinchStateChange}
+              >
+                <ScrollView
+                  ref={horizontalScrollRef}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  bounces={false}
+                  style={styles.scrollableChartArea}
+                  contentContainerStyle={{ width: chartContentWidth }}
+                >
+                  <LineChart
+                    data={chartData}
+                    width={chartContentWidth}
+                    height={chartHeight}
+                    spacing={calculatedSpacing}
+                    initialSpacing={20}
+                    endSpacing={30}
+                    color="#2962FF"
+                    thickness={2.5}
+                    startFillColor="#2962FF"
+                    endFillColor="#2962FF"
+                    startOpacity={0.25}
+                    endOpacity={0.01}
+                    hideYAxisText={true}
+                    yAxisLabelWidth={0}
+                    yAxisThickness={0}
+                    yAxisColor="transparent"
+                    xAxisColor="transparent"
+                    rulesLength={chartContentWidth}
+                    yAxisOffset={yAxisOffset}
+                    maxValue={maxYValue}
+                    noOfSections={4}
+                    rulesColor="#1A253C"
+                    rulesType="dotted"
+                    hideDataPoints={false}
+                    maintainAspectRatio={false}
+                    disableScroll={true}
+                    xAxisLabelsHeight={24}
+                    labelsExtraHeight={16}
+                    overflowBottom={24}
+                    xAxisLabelTextStyle={{ 
+                      color: '#5C6B89', 
+                      fontSize: 11, 
+                      width: 76, 
+                      textAlign: 'center', 
+                      marginLeft: -28,
+                      transform: [{ rotate: '0deg' }]
+                    }}
+                    pointerConfig={{
+                      pointerStripHeight: chartHeight,
+                      pointerStripColor: '#5C6B89',
+                      pointerStripWidth: 1,
+                      pointerColor: '#2962FF',
+                      radius: 5,
+                      pointerLabelWidth: 110,
+                      pointerLabelHeight: 80,
+                      activatePointersOnLongPress: true,
+                      autoAdjustPointerLabelPosition: true,
+                      pointerLabelComponent: (items: any) => {
+                        return (
+                          <View style={styles.tooltipContainer}>
+                            <Text style={styles.tooltipDate}>{items[0].date}</Text>
+                            <Text style={styles.tooltipValue}>{items[0].value.toFixed(4)}</Text>
+                          </View>
+                        );
+                      },
+                    }}
+                  />
+                </ScrollView>
+              </PinchGestureHandler>
+            </View>
           )}
         </View>
 
@@ -408,6 +448,33 @@ const styles = StyleSheet.create({
     minHeight: 180,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  // Split layout: Fixed Y-axis column on left + Horizontally scrollable chart on right
+  splitChartLayout: {
+    flex: 1,
+    flexDirection: 'row',
+    width: '100%',
+    minHeight: 0,
+  },
+  fixedYAxisContainer: {
+    width: 62,
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    paddingRight: 6,
+    zIndex: 10,
+  },
+  yAxisLabelRow: {
+    height: 16,
+    justifyContent: 'center',
+  },
+  fixedYAxisText: {
+    color: '#5C6B89',
+    fontSize: 11,
+    textAlign: 'right',
+  },
+  scrollableChartArea: {
+    flex: 1,
+    minHeight: 0,
   },
   timeframeWrapper: {
     height: 48,
