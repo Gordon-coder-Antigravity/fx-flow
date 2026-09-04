@@ -88,8 +88,8 @@ export default function CurrencyItem({
   // Dynamically reduce font size for long numbers to prevent overflow
   const dynamicFontSize = 
     amount.length > 15 ? 15 :
-    amount.length > 13 ? 18 :
-    amount.length > 11 ? 20 : 24;
+    amount.length > 12 ? 18 :
+    amount.length > 9 ? 20 : 22;
 
   return (
     <ScaleDecorator>
@@ -164,8 +164,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   infoContainer: {
-    flex: 0.9,
-    paddingRight: 8,
+    width: 90,
+    flexShrink: 0,
+    paddingRight: 6,
   },
   codeText: {
     color: '#FFFFFF',
@@ -186,19 +187,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    flex: 1.1,
-    gap: 8,
+    flex: 1,
+    gap: 6,
     position: 'relative',
     zIndex: 10,
   },
   rateInput: {
     color: '#FFFFFF',
-    fontSize: 24,
-    fontWeight: '300',
+    fontSize: 22,
+    fontWeight: '400',
     textAlign: 'right',
     flex: 1,
-    maxWidth: '90%',
-    paddingVertical: 4,
+    paddingVertical: 2,
   },
   baseRateText: {
     color: '#00B4D8',

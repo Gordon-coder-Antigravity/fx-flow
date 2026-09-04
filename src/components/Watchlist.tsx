@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, FlatList, Platform, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, FlatList, Platform, TextInput, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Dropdown } from 'react-native-element-dropdown';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -167,8 +167,11 @@ export default function Watchlist() {
     return parts.join('.');
   };
 
+  const isInitialInputRef = useRef<boolean>(true);
+
   const handleFocus = (code: string, e?: any) => {
     setEditingCurrency(code);
+    isInitialInputRef.current = true;
     const rateBase = rates[calcBaseCurrency] || 1;
     const rateTarget = rates[code] || 1;
     const currentVal = (calcAmount / rateBase) * rateTarget;
@@ -192,9 +195,13 @@ export default function Watchlist() {
     if (parts.length > 2) {
       clean = parts[0] + '.' + parts.slice(1).join('');
     }
+    if (clean.includes('.')) {
+      const p = clean.split('.');
+      clean = p[0] + '.' + p[1].slice(0, 4);
+    }
     setEditingValue(clean);
 
-    if (clean !== '') {
+    if (clean !== '' && clean !== '.') {
       const num = parseFloat(clean);
       if (!isNaN(num)) {
         setCalcBaseCurrency(code);
@@ -205,15 +212,13 @@ export default function Watchlist() {
 
   const handleBlurFormat = (code: string) => {
     if (editingCurrency === code) {
-      if (editingValue === '') {
+      if (editingValue === '' || editingValue === '.' || isNaN(parseFloat(editingValue))) {
         setEditingCurrency(null);
         setEditingValue('');
       } else {
         const num = parseFloat(editingValue);
-        if (!isNaN(num)) {
-          setCalcAmount(num);
-          setCalcBaseCurrency(code);
-        }
+        setCalcAmount(num);
+        setCalcBaseCurrency(code);
         setEditingCurrency(null);
         setEditingValue('');
       }
@@ -225,14 +230,29 @@ export default function Watchlist() {
     if (!editingCurrency) return;
 
     let newValue = editingValue;
-    if (val === 'backspace') {
-      newValue = newValue.slice(0, -1);
-    } else if (val === '.') {
-      if (!newValue.includes('.')) {
-        newValue = newValue === '' ? '0.' : newValue + '.';
+    if (isInitialInputRef.current) {
+      isInitialInputRef.current = false;
+      if (val === 'backspace') {
+        newValue = '';
+      } else if (val === '.') {
+        newValue = '0.';
+      } else {
+        newValue = val;
       }
     } else {
-      newValue = newValue + val;
+      if (val === 'backspace') {
+        newValue = newValue.slice(0, -1);
+      } else if (val === '.') {
+        if (!newValue.includes('.')) {
+          newValue = newValue === '' ? '0.' : newValue + '.';
+        }
+      } else {
+        const dotIndex = newValue.indexOf('.');
+        if (dotIndex !== -1 && newValue.slice(dotIndex + 1).length >= 4) {
+          return; // Max 4 decimal places reached
+        }
+        newValue = newValue + val;
+      }
     }
 
     handleChangeAmount(editingCurrency, newValue);
@@ -385,9 +405,9 @@ export default function Watchlist() {
     const amount = calculateAmount(item.code);
     
     const dynamicFontSize = 
-      amount.length > 15 ? 16 :
-      amount.length > 13 ? 19 :
-      amount.length > 11 ? 22 : 26;
+      amount.length > 15 ? 15 :
+      amount.length > 12 ? 18 :
+      amount.length > 9 ? 20 : 22;
 
     const isThisDragged = draggedIndex === index;
     const anyDragging = draggedIndex !== null;
@@ -531,24 +551,41 @@ export default function Watchlist() {
             animation: iosWiggle 0.28s ease-in-out infinite !important;
             transform-origin: 50% 50% !important;
           }
-          .ios-keypad-overlay {
-            position: fixed !important;
-            bottom: 0 !important;
-            left: 0 !important;
-            right: 0 !important;
-            z-index: 99999 !important;
-            padding-bottom: max(22px, env(safe-area-inset-bottom, 22px)) !important;
-            backdrop-filter: blur(28px) !important;
-            -webkit-backdrop-filter: blur(28px) !important;
-          }
-          .ios-keypad-backdrop {
+          .ios-modal-root {
             position: fixed !important;
             top: 0 !important;
             left: 0 !important;
             right: 0 !important;
             bottom: 0 !important;
-            z-index: 99990 !important;
+            z-index: 999999 !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: flex-end !important;
+          }
+          .ios-keypad-backdrop {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            z-index: 1 !important;
             background-color: transparent !important;
+          }
+          .ios-keypad-overlay {
+            position: relative !important;
+            bottom: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+            z-index: 2 !important;
+            padding-bottom: max(28px, env(safe-area-inset-bottom, 28px)) !important;
+            backdrop-filter: blur(28px) !important;
+            -webkit-backdrop-filter: blur(28px) !important;
+            border-top-left-radius: 20px !important;
+            border-top-right-radius: 20px !important;
+            border-bottom-left-radius: 0px !important;
+            border-bottom-right-radius: 0px !important;
           }
           .ios-cursor-blink {
             animation: iosBlink 1s infinite !important;
@@ -613,6 +650,7 @@ export default function Watchlist() {
           keyExtractor={(item) => item.id}
           renderItem={renderWebItem}
           style={styles.listContainer}
+          contentContainerStyle={styles.listContentContainer}
           keyboardShouldPersistTaps="always"
         />
       ) : (
@@ -622,91 +660,108 @@ export default function Watchlist() {
           keyExtractor={(item: CurrencyData) => item.id}
           renderItem={renderNativeItem}
           containerStyle={styles.listContainer}
+          contentContainerStyle={styles.listContentContainer}
           keyboardShouldPersistTaps="always"
         />
       )}
 
-      {/* iOS Frosted Numeric Keypad & Floating Done Button (matching Image 1) */}
-      {editingCurrency && (
-        <>
+      {/* iOS Frosted Numeric Keypad Modal (attached firmly to the bottom of the screen) */}
+      <Modal
+        visible={!!editingCurrency}
+        transparent={true}
+        animationType="none"
+        onRequestClose={handleKeypadDone}
+        statusBarTranslucent={true}
+      >
+        <View 
+          style={styles.modalRoot}
+          {...(Platform.OS === 'web' ? { className: 'ios-modal-root' } : {})}
+        >
+          {/* Fullscreen Backdrop */}
           <TouchableOpacity 
             style={styles.keypadBackdrop}
             activeOpacity={1}
             onPress={handleKeypadDone}
             {...(Platform.OS === 'web' ? { className: 'ios-keypad-backdrop' } : {})}
           />
+          
+          {/* Bottom Frosted Keypad Card */}
           <View 
             style={styles.keypadOverlay}
             {...(Platform.OS === 'web' ? { className: 'ios-keypad-overlay' } : {})}
           >
-          {/* Floating Done Button */}
-          <View style={styles.doneBar}>
-            <TouchableOpacity style={styles.doneButton} onPress={handleKeypadDone}>
-              <Text style={styles.doneButtonText}>Done</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Keypad Grid */}
-          <View style={styles.keypadGrid}>
-            <View style={styles.keypadRow}>
-              <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('1')}>
-                <Text style={styles.keyNumber}>1</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('2')}>
-                <Text style={styles.keyNumber}>2</Text>
-                <Text style={styles.keyLetters}>ABC</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('3')}>
-                <Text style={styles.keyNumber}>3</Text>
-                <Text style={styles.keyLetters}>DEF</Text>
+            {/* Floating Done Button */}
+            <View style={styles.doneBar}>
+              <TouchableOpacity style={styles.doneButton} onPress={handleKeypadDone} activeOpacity={0.8}>
+                <Text style={styles.doneButtonText}>Done</Text>
               </TouchableOpacity>
             </View>
 
-            <View style={styles.keypadRow}>
-              <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('4')}>
-                <Text style={styles.keyNumber}>4</Text>
-                <Text style={styles.keyLetters}>GHI</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('5')}>
-                <Text style={styles.keyNumber}>5</Text>
-                <Text style={styles.keyLetters}>JKL</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('6')}>
-                <Text style={styles.keyNumber}>6</Text>
-                <Text style={styles.keyLetters}>MNO</Text>
-              </TouchableOpacity>
-            </View>
+            {/* Keypad Grid - 4 Full Rows */}
+            <View style={styles.keypadGrid}>
+              {/* Row 1: 1, 2 ABC, 3 DEF */}
+              <View style={styles.keypadRow}>
+                <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('1')} activeOpacity={0.6}>
+                  <Text style={styles.keyNumber}>1</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('2')} activeOpacity={0.6}>
+                  <Text style={styles.keyNumber}>2</Text>
+                  <Text style={styles.keyLetters}>ABC</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('3')} activeOpacity={0.6}>
+                  <Text style={styles.keyNumber}>3</Text>
+                  <Text style={styles.keyLetters}>DEF</Text>
+                </TouchableOpacity>
+              </View>
 
-            <View style={styles.keypadRow}>
-              <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('7')}>
-                <Text style={styles.keyNumber}>7</Text>
-                <Text style={styles.keyLetters}>PQRS</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('8')}>
-                <Text style={styles.keyNumber}>8</Text>
-                <Text style={styles.keyLetters}>TUV</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('9')}>
-                <Text style={styles.keyNumber}>9</Text>
-                <Text style={styles.keyLetters}>WXYZ</Text>
-              </TouchableOpacity>
-            </View>
+              {/* Row 2: 4 GHI, 5 JKL, 6 MNO */}
+              <View style={styles.keypadRow}>
+                <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('4')} activeOpacity={0.6}>
+                  <Text style={styles.keyNumber}>4</Text>
+                  <Text style={styles.keyLetters}>GHI</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('5')} activeOpacity={0.6}>
+                  <Text style={styles.keyNumber}>5</Text>
+                  <Text style={styles.keyLetters}>JKL</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('6')} activeOpacity={0.6}>
+                  <Text style={styles.keyNumber}>6</Text>
+                  <Text style={styles.keyLetters}>MNO</Text>
+                </TouchableOpacity>
+              </View>
 
-            <View style={styles.keypadRow}>
-              <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('.')}>
-                <Text style={styles.keyNumber}>.</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('0')}>
-                <Text style={styles.keyNumber}>0</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('backspace')}>
-                <Ionicons name="backspace-outline" size={24} color="#111827" />
-              </TouchableOpacity>
+              {/* Row 3: 7 PQRS, 8 TUV, 9 WXYZ */}
+              <View style={styles.keypadRow}>
+                <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('7')} activeOpacity={0.6}>
+                  <Text style={styles.keyNumber}>7</Text>
+                  <Text style={styles.keyLetters}>PQRS</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('8')} activeOpacity={0.6}>
+                  <Text style={styles.keyNumber}>8</Text>
+                  <Text style={styles.keyLetters}>TUV</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('9')} activeOpacity={0.6}>
+                  <Text style={styles.keyNumber}>9</Text>
+                  <Text style={styles.keyLetters}>WXYZ</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Row 4: . , 0 , backspace */}
+              <View style={styles.keypadRow}>
+                <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('.')} activeOpacity={0.6}>
+                  <Text style={[styles.keyNumber, styles.keyDot]}>.</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('0')} activeOpacity={0.6}>
+                  <Text style={styles.keyNumber}>0</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('backspace')} activeOpacity={0.6}>
+                  <Ionicons name="backspace-outline" size={26} color="#111827" />
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </View>
-      </>
-    )}
+      </Modal>
     </View>
   );
 }
@@ -792,6 +847,9 @@ const styles = StyleSheet.create({
   listContainer: {
     flex: 1,
   },
+  listContentContainer: {
+    paddingBottom: 360,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -838,30 +896,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   infoContainer: {
-    flex: 0.9,
-    paddingRight: 8,
+    width: 90,
+    flexShrink: 0,
+    paddingRight: 6,
   },
   codeText: {
     color: '#FFFFFF',
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: 'bold',
     marginBottom: 2,
   },
   nameText: {
     color: '#8A99AF',
-    fontSize: 12,
+    fontSize: 11,
   },
   symbolText: {
     color: '#6B7A90',
-    fontSize: 11,
-    marginTop: 2,
+    fontSize: 10,
+    marginTop: 1,
   },
   rightContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    flex: 1.1,
-    gap: 8,
+    flex: 1,
+    gap: 6,
     position: 'relative',
     zIndex: 10,
   },
@@ -872,24 +931,26 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     paddingVertical: 4,
     paddingHorizontal: 6,
-    borderRadius: 6,
+    borderRadius: 8,
   },
   rateDisplayBtnActive: {
-    backgroundColor: 'rgba(0, 180, 216, 0.08)',
+    backgroundColor: 'rgba(0, 180, 216, 0.12)',
   },
   rateInput: {
     color: '#FFFFFF',
-    fontSize: 24,
-    fontWeight: '300',
+    fontSize: 22,
+    fontWeight: '400',
     textAlign: 'right',
-    maxWidth: '90%',
-    paddingVertical: 4,
+    paddingVertical: 2,
+    ...(Platform.OS === 'web' ? {
+      fontVariant: ['tabular-nums'],
+    } as any : {}),
   },
   rateCursor: {
     width: 2,
-    height: 24,
+    height: 22,
     backgroundColor: '#00B4D8',
-    marginLeft: 2,
+    marginLeft: 3,
     borderRadius: 1,
   },
   baseRateText: {
@@ -901,35 +962,50 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   // iOS Numeric Keypad Styles (Image 1)
+  modalRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'transparent',
+    ...(Platform.OS === 'web' ? {
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 999999,
+    } as any : {}),
+  },
   keypadBackdrop: {
-    position: (Platform.OS === 'web' ? 'fixed' : 'absolute') as any,
+    position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    zIndex: 9998,
+    backgroundColor: 'transparent',
+    zIndex: 1,
   },
   keypadOverlay: {
-    position: (Platform.OS === 'web' ? 'fixed' : 'absolute') as any,
-    bottom: 0,
-    left: 0,
-    right: 0,
+    position: 'relative',
+    width: '100%',
     backgroundColor: 'rgba(215, 218, 226, 0.96)',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
     paddingTop: 8,
-    paddingBottom: 24,
-    paddingHorizontal: 6,
-    zIndex: 9999,
+    paddingBottom: Platform.OS === 'web' ? 'max(28px, env(safe-area-inset-bottom, 28px))' : 28,
+    paddingHorizontal: 8,
+    zIndex: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.35,
     shadowRadius: 16,
-    elevation: 20,
+    elevation: 25,
     ...(Platform.OS === 'web' ? {
-      backdropFilter: 'blur(25px)',
-      WebkitBackdropFilter: 'blur(25px)',
-    } : {}),
+      backdropFilter: 'blur(28px)',
+      WebkitBackdropFilter: 'blur(28px)',
+      boxSizing: 'border-box',
+    } as any : {}),
   },
   doneBar: {
     flexDirection: 'row',
@@ -974,8 +1050,13 @@ const styles = StyleSheet.create({
   },
   keyNumber: {
     color: '#111827',
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '500',
+  },
+  keyDot: {
+    fontSize: 28,
+    lineHeight: 24,
+    fontWeight: 'bold',
   },
   keyLetters: {
     color: '#111827',
