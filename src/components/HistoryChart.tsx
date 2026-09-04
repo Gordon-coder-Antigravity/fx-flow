@@ -77,7 +77,7 @@ export default function HistoryChart() {
       const latestRate = history[history.length - 1].value;
       
       setCurrentRate(latestRate);
-      setPercentChange(((latestRate - firstRate) / firstRate) * 100);
+      setPercentChange(((latestRate - firstRate) / (firstRate || 1)) * 100);
       setLastDate(history[history.length - 1].date);
       
       const isUp = latestRate >= firstRate;
@@ -89,7 +89,7 @@ export default function HistoryChart() {
           ...d,
           hideDataPoint: !isLast,
           dataPointColor: '#2962FF',
-          dataPointRadius: isLast ? 5 : 0,
+          dataPointRadius: isLast ? 4 : 0,
         };
       });
 
@@ -108,30 +108,26 @@ export default function HistoryChart() {
   };
 
   const getSpacing = () => {
-    if (chartData.length <= 1) return 10;
-    
-    // By giving fixed spacing rather than dividing by screen width,
-    // the chart naturally becomes a slidable (scrollable) view!
-    switch(timeframe) {
-      case '1D': return 8;    // ~96 points
-      case '1W': return Math.max(30, (screenWidth - 80) / Math.max(1, chartData.length - 1));
-      case '1M': return 20;   // ~22 trading days
-      case '3M': return 12;   // ~66 trading days
-      case '6M': return 8;    // ~130 trading days
-      case '1Y': return 6;    // ~260 trading days
-      case '5Y': return 6;    // ~260 weeks
-      case '10Y': return 8;   // ~120 months
-      default: return 10;
-    }
+    if (chartData.length <= 1) return 20;
+    const availableWidth = screenWidth - 100;
+    const computed = availableWidth / Math.max(1, chartData.length - 1);
+    return Math.max(computed, 22);
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + 60, paddingBottom: 30 }]}>
-      
+    <ScrollView 
+      style={styles.container} 
+      contentContainerStyle={[
+        styles.scrollContent, 
+        { paddingTop: Math.max(insets.top, 16) + 8, paddingBottom: 30 }
+      ]}
+      showsVerticalScrollIndicator={false}
+      bounces={false}
+    >
       {/* Currency Selectors */}
       <View style={styles.selectorsContainer}>
         <View style={styles.pillContainer}>
-          <Text style={styles.flagIcon}>{FLAGS[baseCurrency]}</Text>
+          <Text style={styles.flagIcon}>{FLAGS[baseCurrency] || '🌐'}</Text>
           <Dropdown
             style={styles.dropdown}
             selectedTextStyle={styles.dropdownText}
@@ -152,7 +148,7 @@ export default function HistoryChart() {
         </TouchableOpacity>
 
         <View style={styles.pillContainer}>
-          <Text style={styles.flagIcon}>{FLAGS[targetCurrency]}</Text>
+          <Text style={styles.flagIcon}>{FLAGS[targetCurrency] || '🌐'}</Text>
           <Dropdown
             style={styles.dropdown}
             selectedTextStyle={styles.dropdownText}
@@ -171,7 +167,6 @@ export default function HistoryChart() {
 
       {/* Rate Display */}
       <View style={styles.rateDisplayContainer}>
-        {/* Use a single Text wrapper with adjustsFontSizeToFit so it never wraps to a new line */}
         <Text 
           style={styles.singleLineRate} 
           adjustsFontSizeToFit 
@@ -196,74 +191,78 @@ export default function HistoryChart() {
         </View>
       </View>
 
-      {/* Chart */}
-      <View style={styles.chartContainer}>
-        {loading ? (
-          <View style={styles.loadingWrapper}>
-            <ActivityIndicator color="#2962FF" size="large" />
-          </View>
-        ) : chartData.length === 0 ? (
-          <View style={styles.loadingWrapper}>
-            <Text style={{ color: '#8A99AF' }}>No data available for this pair.</Text>
-          </View>
-        ) : (
-          <PinchGestureHandler
-            onGestureEvent={onPinchEvent}
-            onHandlerStateChange={onPinchStateChange}
-          >
-            <View style={{ flex: 1, width: screenWidth - 20 }}>
-              <LineChart
-                data={chartData}
-                width={screenWidth - 80}
-                height={260}
-                spacing={getSpacing() * zoomScale}
-                initialSpacing={15}
-                scrollToEnd={true}
-                color="#2962FF"
-                thickness={2.5}
-                startFillColor="#2962FF"
-                endFillColor="#2962FF"
-                startOpacity={0.3}
-                endOpacity={0.01}
-                yAxisColor="transparent"
-                xAxisColor="transparent"
-                yAxisSide={1} 
-                yAxisLabelWidth={60} 
-                yAxisOffset={yAxisOffset}
-                maxValue={maxYValue}
-                noOfSections={4}
-                yAxisTextStyle={{ color: '#5C6B89', fontSize: 11, textAlign: 'right', paddingRight: 5 }}
-                xAxisLabelTextStyle={{ color: '#5C6B89', fontSize: 11, width: 60, textAlign: 'center', marginLeft: -30 }}
-                formatYLabel={(label) => Number(label).toFixed(4)}
-                rulesColor="#1A253C"
-                rulesType="dotted"
-                hideDataPoints={false}
-                pointerConfig={{
-                  pointerStripHeight: 260,
-                  pointerStripColor: '#5C6B89',
-                  pointerStripWidth: 1,
-                  pointerColor: '#2962FF',
-                  radius: 6,
-                  pointerLabelWidth: 100,
-                  pointerLabelHeight: 90,
-                  activatePointersOnLongPress: true,
-                  autoAdjustPointerLabelPosition: true,
-                  pointerLabelComponent: (items: any) => {
-                    return (
-                      <View style={styles.tooltipContainer}>
-                        <Text style={styles.tooltipDate}>{items[0].date}</Text>
-                        <Text style={styles.tooltipValue}>{items[0].value.toFixed(6)}</Text>
-                      </View>
-                    );
-                  },
-                }}
-              />
+      {/* Chart Section */}
+      <View style={styles.chartWrapper}>
+        <View style={styles.chartContainer}>
+          {loading ? (
+            <View style={styles.loadingWrapper}>
+              <ActivityIndicator color="#2962FF" size="large" />
             </View>
-          </PinchGestureHandler>
-        )}
+          ) : chartData.length === 0 ? (
+            <View style={styles.loadingWrapper}>
+              <Text style={{ color: '#8A99AF' }}>No data available for this pair.</Text>
+            </View>
+          ) : (
+            <PinchGestureHandler
+              onGestureEvent={onPinchEvent}
+              onHandlerStateChange={onPinchStateChange}
+            >
+              <View style={{ width: screenWidth - 20 }}>
+                <LineChart
+                  data={chartData}
+                  width={screenWidth - 85}
+                  height={200}
+                  spacing={getSpacing() * zoomScale}
+                  initialSpacing={15}
+                  endSpacing={15}
+                  scrollToEnd={true}
+                  color="#2962FF"
+                  thickness={2.5}
+                  startFillColor="#2962FF"
+                  endFillColor="#2962FF"
+                  startOpacity={0.25}
+                  endOpacity={0.01}
+                  yAxisColor="transparent"
+                  xAxisColor="transparent"
+                  yAxisSide={1} 
+                  yAxisLabelWidth={60} 
+                  yAxisOffset={yAxisOffset}
+                  maxValue={maxYValue}
+                  noOfSections={4}
+                  yAxisTextStyle={{ color: '#5C6B89', fontSize: 11, textAlign: 'right', paddingRight: 4 }}
+                  xAxisLabelsHeight={24}
+                  xAxisLabelTextStyle={{ color: '#5C6B89', fontSize: 10, width: 70, textAlign: 'center', marginLeft: -25 }}
+                  formatYLabel={(label) => Number(label).toFixed(4)}
+                  rulesColor="#1A253C"
+                  rulesType="dotted"
+                  hideDataPoints={false}
+                  pointerConfig={{
+                    pointerStripHeight: 200,
+                    pointerStripColor: '#5C6B89',
+                    pointerStripWidth: 1,
+                    pointerColor: '#2962FF',
+                    radius: 5,
+                    pointerLabelWidth: 100,
+                    pointerLabelHeight: 80,
+                    activatePointersOnLongPress: true,
+                    autoAdjustPointerLabelPosition: true,
+                    pointerLabelComponent: (items: any) => {
+                      return (
+                        <View style={styles.tooltipContainer}>
+                          <Text style={styles.tooltipDate}>{items[0].date}</Text>
+                          <Text style={styles.tooltipValue}>{items[0].value.toFixed(4)}</Text>
+                        </View>
+                      );
+                    },
+                  }}
+                />
+              </View>
+            </PinchGestureHandler>
+          )}
+        </View>
       </View>
 
-      {/* Timeframes */}
+      {/* Period / Timeframe Options */}
       <View style={styles.timeframeWrapper}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.timeframeContainer}>
           {TIMEFRAMES.map((tf) => (
@@ -277,7 +276,7 @@ export default function HistoryChart() {
           ))}
         </ScrollView>
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -286,21 +285,24 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000000',
   },
+  scrollContent: {
+    flexGrow: 1,
+  },
   selectorsContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    marginBottom: 14,
   },
   pillContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#1C1C1E',
     borderRadius: 24,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 8,
-    flex: 0.47,
+    flex: 0.46,
   },
   flagIcon: {
     fontSize: 18,
@@ -328,7 +330,7 @@ const styles = StyleSheet.create({
   },
   rateDisplayContainer: {
     paddingHorizontal: 20,
-    marginBottom: 0, // Reduced to give more room for the chart below
+    marginBottom: 8,
   },
   singleLineRate: {
     width: '100%',
@@ -336,21 +338,21 @@ const styles = StyleSheet.create({
   },
   mainRateBase: {
     color: '#FFFFFF',
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
   },
   mainRateEqual: {
     color: '#FFFFFF',
-    fontSize: 24,
+    fontSize: 22,
   },
   mainRateValue: {
     color: '#FFFFFF',
-    fontSize: 32,
+    fontSize: 30,
     fontWeight: 'bold',
   },
   mainRateTarget: {
     color: '#8A99AF',
-    fontSize: 22,
+    fontSize: 20,
   },
   changeContainer: {
     flexDirection: 'row',
@@ -366,27 +368,29 @@ const styles = StyleSheet.create({
     color: '#5C6B89',
     fontSize: 14,
   },
+  chartWrapper: {
+    width: '100%',
+    paddingHorizontal: 10,
+    marginTop: 4,
+  },
   chartContainer: {
-    height: 270,
-    paddingBottom: 20,
-    paddingLeft: 10,
-    paddingRight: 10,
+    minHeight: 235,
+    paddingBottom: 10,
     justifyContent: 'center',
-    marginBottom: 10,
   },
   loadingWrapper: {
-    flex: 1,
+    height: 200,
     justifyContent: 'center',
     alignItems: 'center',
   },
   timeframeWrapper: {
-    marginTop: 'auto', 
-    marginBottom: 15,
+    marginTop: 10,
+    marginBottom: 20,
   },
   timeframeContainer: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     flexDirection: 'row',
-    gap: 12,
+    gap: 10,
   },
   tfButton: {
     width: 44,
@@ -409,7 +413,7 @@ const styles = StyleSheet.create({
   },
   tooltipContainer: {
     backgroundColor: '#1C1C1E',
-    padding: 10,
+    padding: 8,
     borderRadius: 8,
     alignItems: 'center',
     borderWidth: 1,
@@ -417,12 +421,12 @@ const styles = StyleSheet.create({
   },
   tooltipDate: {
     color: '#8A99AF',
-    fontSize: 12,
-    marginBottom: 4,
+    fontSize: 11,
+    marginBottom: 2,
   },
   tooltipValue: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: 'bold',
   },
 });

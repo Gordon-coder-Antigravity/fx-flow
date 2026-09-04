@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Keyboard, TouchableWithoutFeedback, FlatList, Platform, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, FlatList, Platform, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Dropdown } from 'react-native-element-dropdown';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,13 +9,14 @@ import { CurrencyData } from './CurrencyItem';
 import { fetchRates } from '../utils/api';
 import { AVAILABLE_CURRENCIES } from '../utils/mockData';
 
-// Only import DraggableFlatList on native
+// Only load DraggableFlatList on native
 let DraggableFlatList: any = null;
-let ScaleDecorator: any = null;
 if (Platform.OS !== 'web') {
-  const draggable = require('react-native-draggable-flatlist');
-  DraggableFlatList = draggable.default;
-  ScaleDecorator = draggable.ScaleDecorator;
+  try {
+    DraggableFlatList = require('react-native-draggable-flatlist').default;
+  } catch (e) {
+    // fallback to FlatList
+  }
 }
 
 const INITIAL_WATCHLIST = ['USD', 'TWD', 'JPY'];
@@ -36,7 +37,10 @@ export default function Watchlist() {
     let savedCodes = INITIAL_WATCHLIST;
     try {
       const storedWatchlist = await AsyncStorage.getItem('saved_watchlist');
-      if (storedWatchlist) savedCodes = JSON.parse(storedWatchlist);
+      if (storedWatchlist) {
+        const parsed = JSON.parse(storedWatchlist);
+        if (Array.isArray(parsed) && parsed.length > 0) savedCodes = parsed;
+      }
       const storedBase = await AsyncStorage.getItem('saved_baseCurrency');
       if (storedBase) setBaseCurrency(storedBase);
       const storedAmount = await AsyncStorage.getItem('saved_baseAmount');
@@ -45,7 +49,7 @@ export default function Watchlist() {
         setBaseAmount(!isNaN(num) ? num.toFixed(4) : '1.0000');
       }
     } catch (e) {
-      // AsyncStorage may not work on web — use defaults
+      // default fallback
     }
 
     const initialData = savedCodes.map(code => {
@@ -105,16 +109,41 @@ export default function Watchlist() {
     setWatchlist(watchlist.filter(item => item.id !== id));
   };
 
-  const handleChangeAmount = (code: string, amount: string) => {
-    setBaseCurrency(code);
-    // Strip commas so internal state is pure number
-    setBaseAmount(amount.replace(/,/g, ''));
+  const formatThousands = (val: string) => {
+    if (!val) return '';
+    const parts = val.split('.');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return parts.join('.');
   };
 
-  const formatThousands = (val: string) => {
-    const parts = val.split('.');
-    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-    return parts.join('.');
+  const calculateRawAmount = (targetCode: string): string => {
+    if (targetCode === baseCurrency) return baseAmount;
+    if (baseAmount === '') return '';
+    const amountNum = parseFloat(baseAmount);
+    if (isNaN(amountNum)) return '1.0000';
+    const rateBase = rates[baseCurrency] || 1;
+    const rateTarget = rates[targetCode] || 1;
+    const result = (amountNum / rateBase) * rateTarget;
+    return result.toFixed(4);
+  };
+
+  const handleFocus = (code: string) => {
+    if (code !== baseCurrency) {
+      const currentVal = calculateRawAmount(code);
+      setBaseCurrency(code);
+      setBaseAmount(currentVal);
+    }
+  };
+
+  const handleChangeAmount = (code: string, text: string) => {
+    setBaseCurrency(code);
+    // Allow digits and a single decimal point, strip commas
+    let clean = text.replace(/,/g, '').replace(/[^0-9.]/g, '');
+    const parts = clean.split('.');
+    if (parts.length > 2) {
+      clean = parts[0] + '.' + parts.slice(1).join('');
+    }
+    setBaseAmount(clean);
   };
 
   const handleBlurFormat = () => {
@@ -127,6 +156,7 @@ export default function Watchlist() {
 
   const calculateAmount = (targetCode: string): string => {
     if (targetCode === baseCurrency) {
+      if (baseAmount === '') return '';
       return formatThousands(baseAmount);
     }
     if (baseAmount === '') return '';
@@ -147,46 +177,51 @@ export default function Watchlist() {
     setWatchlist(newList);
   };
 
-  // ---- Web version: plain FlatList with move buttons ----
+  // ---- Web Item Renderer ----
   const renderWebItem = ({ item, index }: { item: CurrencyData; index: number }) => {
     const isBase = item.code === baseCurrency;
     const amount = calculateAmount(item.code);
     return (
       <View style={[styles.itemContainer, isBase && styles.itemContainerBase]}>
-        {isBase && <View style={styles.baseIndicator} />}
+        {isBase && <View style={styles.baseIndicator} pointerEvents="none" />}
 
-        {/* Move buttons */}
+        {/* Move up/down buttons on web */}
         <View style={styles.moveButtons}>
           <TouchableOpacity
             onPress={() => moveItem(index, 'up')}
             disabled={index === 0}
             style={styles.moveBtn}
           >
-            <Ionicons name="chevron-up" size={16} color={index === 0 ? '#333' : '#8A99AF'} />
+            <Ionicons name="chevron-up" size={16} color={index === 0 ? '#2A364F' : '#8A99AF'} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => moveItem(index, 'down')}
             disabled={index === watchlist.length - 1}
             style={styles.moveBtn}
           >
-            <Ionicons name="chevron-down" size={16} color={index === watchlist.length - 1 ? '#333' : '#8A99AF'} />
+            <Ionicons name="chevron-down" size={16} color={index === watchlist.length - 1 ? '#2A364F' : '#8A99AF'} />
           </TouchableOpacity>
         </View>
 
-        <View style={styles.infoContainer}>
+        <TouchableOpacity 
+          style={styles.infoContainer} 
+          onPress={() => handleFocus(item.code)}
+          activeOpacity={0.8}
+        >
           <Text style={styles.codeText}>{item.code}</Text>
           <Text style={styles.nameText}>{item.symbol} {item.name}</Text>
-        </View>
+        </TouchableOpacity>
 
         <View style={styles.rightContainer}>
           <TextInput
             style={[styles.rateInput, isBase && styles.baseRateText]}
             value={amount}
+            onFocus={() => handleFocus(item.code)}
             onChangeText={(text) => handleChangeAmount(item.code, text)}
             onBlur={handleBlurFormat}
-            keyboardType="default"
+            keyboardType="numeric"
             returnKeyType="done"
-            selectTextOnFocus
+            editable={true}
           />
           <TouchableOpacity onPress={() => handleRemove(item.id)} style={styles.removeButton}>
             <Ionicons name="close-outline" size={20} color="#8A99AF" />
@@ -196,7 +231,7 @@ export default function Watchlist() {
     );
   };
 
-  // ---- Native version: DraggableFlatList ----
+  // ---- Native Item Renderer ----
   const renderNativeItem = ({ item, drag, isActive }: any) => {
     const CurrencyItemComponent = require('./CurrencyItem').default;
     return (
@@ -209,70 +244,69 @@ export default function Watchlist() {
         amount={calculateAmount(item.code)}
         onChangeAmount={handleChangeAmount}
         onBlurFormat={handleBlurFormat}
+        onFocus={() => handleFocus(item.code)}
       />
     );
   };
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.title}>FX FLOW</Text>
-            <Text style={styles.subtitle}>LIVE EXCHANGE RATES</Text>
-          </View>
-          <TouchableOpacity onPress={handleRefresh} style={styles.refreshButton} disabled={loading}>
-            {loading ? (
-              <ActivityIndicator color="#8A99AF" size="small" />
-            ) : (
-              <Ionicons name="sync" size={20} color="#8A99AF" />
-            )}
-          </TouchableOpacity>
+    <View style={[styles.container, { paddingTop: Math.max(insets.top, 16) }]}>
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.title}>FX FLOW</Text>
+          <Text style={styles.subtitle}>LIVE EXCHANGE RATES</Text>
         </View>
-
-        <View style={styles.addSection}>
-          <Dropdown
-            style={styles.dropdown}
-            placeholderStyle={styles.dropdownText}
-            selectedTextStyle={styles.dropdownText}
-            itemTextStyle={styles.dropdownItemText}
-            data={AVAILABLE_CURRENCIES}
-            labelField="label"
-            valueField="value"
-            value={selectedCurrency}
-            onChange={item => setSelectedCurrency(item.value)}
-            containerStyle={styles.dropdownContainer}
-            activeColor="#1A253C"
-          />
-          <TouchableOpacity style={styles.addButton} onPress={handleAdd}>
-            <Text style={styles.addButtonText}>+ 新增</Text>
-          </TouchableOpacity>
-        </View>
-
-        {loading && watchlist.length === 0 ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator color="#00B4D8" size="large" />
-          </View>
-        ) : Platform.OS === 'web' ? (
-          <FlatList
-            data={watchlist}
-            keyExtractor={(item) => item.id}
-            renderItem={renderWebItem}
-            style={styles.listContainer}
-            keyboardShouldPersistTaps="handled"
-          />
-        ) : DraggableFlatList ? (
-          <DraggableFlatList
-            data={watchlist}
-            onDragEnd={({ data }: any) => setWatchlist(data)}
-            keyExtractor={(item: CurrencyData) => item.id}
-            renderItem={renderNativeItem}
-            containerStyle={styles.listContainer}
-            keyboardShouldPersistTaps="handled"
-          />
-        ) : null}
+        <TouchableOpacity onPress={handleRefresh} style={styles.refreshButton} disabled={loading}>
+          {loading ? (
+            <ActivityIndicator color="#8A99AF" size="small" />
+          ) : (
+            <Ionicons name="sync" size={20} color="#8A99AF" />
+          )}
+        </TouchableOpacity>
       </View>
-    </TouchableWithoutFeedback>
+
+      <View style={styles.addSection}>
+        <Dropdown
+          style={styles.dropdown}
+          placeholderStyle={styles.dropdownText}
+          selectedTextStyle={styles.dropdownText}
+          itemTextStyle={styles.dropdownItemText}
+          data={AVAILABLE_CURRENCIES}
+          labelField="label"
+          valueField="value"
+          value={selectedCurrency}
+          onChange={item => setSelectedCurrency(item.value)}
+          containerStyle={styles.dropdownContainer}
+          activeColor="#1A253C"
+        />
+        <TouchableOpacity style={styles.addButton} onPress={handleAdd}>
+          <Text style={styles.addButtonText}>+ 新增</Text>
+        </TouchableOpacity>
+      </View>
+
+      {loading && watchlist.length === 0 ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator color="#00B4D8" size="large" />
+        </View>
+      ) : Platform.OS === 'web' || !DraggableFlatList ? (
+        <FlatList
+          data={watchlist}
+          keyExtractor={(item) => item.id}
+          renderItem={renderWebItem}
+          style={styles.listContainer}
+          keyboardShouldPersistTaps="always"
+        />
+      ) : (
+        <DraggableFlatList
+          data={watchlist}
+          onDragEnd={({ data }: any) => setWatchlist(data)}
+          keyExtractor={(item: CurrencyData) => item.id}
+          renderItem={renderNativeItem}
+          containerStyle={styles.listContainer}
+          keyboardShouldPersistTaps="always"
+        />
+      )}
+    </View>
   );
 }
 
@@ -286,8 +320,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 24,
+    paddingTop: 16,
+    paddingBottom: 20,
   },
   title: {
     color: '#FFFFFF',
@@ -309,7 +343,7 @@ const styles = StyleSheet.create({
   addSection: {
     flexDirection: 'row',
     paddingHorizontal: 20,
-    marginBottom: 20,
+    marginBottom: 16,
     gap: 12,
   },
   dropdown: {
@@ -357,24 +391,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  // Web item styles
   itemContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 16,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#1A253C',
     position: 'relative',
-    paddingHorizontal: 8,
+    paddingHorizontal: 12,
   },
   itemContainerBase: {
-    // slight highlight for base
+    backgroundColor: 'rgba(0, 180, 216, 0.04)',
   },
   baseIndicator: {
     position: 'absolute',
     left: 0,
-    top: 10,
-    bottom: 10,
+    top: 8,
+    bottom: 8,
     width: 4,
     backgroundColor: '#00B4D8',
     borderTopRightRadius: 4,
@@ -382,45 +415,49 @@ const styles = StyleSheet.create({
   },
   moveButtons: {
     flexDirection: 'column',
-    marginRight: 8,
+    marginRight: 10,
     gap: 2,
   },
   moveBtn: {
-    padding: 4,
+    padding: 3,
   },
   infoContainer: {
-    flex: 1.5,
-    paddingRight: 10,
+    flex: 1.4,
+    paddingRight: 8,
   },
   codeText: {
     color: '#FFFFFF',
     fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   nameText: {
     color: '#8A99AF',
-    fontSize: 10,
+    fontSize: 11,
   },
   rightContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 2,
+    flex: 2.2,
     justifyContent: 'flex-end',
+    position: 'relative',
+    zIndex: 10,
   },
   rateInput: {
     color: '#FFFFFF',
     fontSize: 24,
     fontWeight: '300',
-    marginRight: 12,
+    marginRight: 8,
     textAlign: 'right',
     flex: 1,
+    paddingVertical: 4,
   },
   baseRateText: {
     color: '#00B4D8',
+    fontWeight: '500',
   },
   removeButton: {
-    padding: 8,
-    marginRight: 8,
+    padding: 6,
+    marginLeft: 4,
   },
 });

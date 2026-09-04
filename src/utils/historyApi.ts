@@ -10,7 +10,6 @@ export type ChartDataPoint = {
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-// Generate date strings between start and end, sampling at given interval
 function generateDates(startDate: Date, endDate: Date, maxPoints: number): string[] {
   const dates: string[] = [];
   const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
@@ -19,104 +18,103 @@ function generateDates(startDate: Date, endDate: Date, maxPoints: number): strin
   for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + step)) {
     dates.push(d.toISOString().split('T')[0]);
   }
-  // Always include the end date
-  const endStr = endDate.toISOString().split('T')[0];
-  if (dates[dates.length - 1] !== endStr) {
-    dates.push(endStr);
-  }
   return dates;
 }
 
-// Web version: uses fawazahmed0/currency-api on jsdelivr CDN (free, CORS-enabled, supports TWD)
+// Web version: uses fawazahmed0/currency-api on jsdelivr CDN (supports all 10 currencies including TWD, CORS-enabled)
 const fetchWebHistory = async (baseCode: string, targetCode: string, timeframe: Timeframe): Promise<ChartDataPoint[]> => {
   try {
     const endDate = new Date();
-    const startDate = new Date();
-    let maxPoints = 30;
+    endDate.setDate(endDate.getDate() - 1); // latest completed day on CDN
+    const startDate = new Date(endDate);
+    let maxPoints = 20;
 
     switch (timeframe) {
-      case '1D': startDate.setDate(endDate.getDate() - 1); maxPoints = 2; break;
+      case '1D': startDate.setDate(endDate.getDate() - 2); maxPoints = 3; break;
       case '1W': startDate.setDate(endDate.getDate() - 7); maxPoints = 7; break;
-      case '1M': startDate.setMonth(endDate.getMonth() - 1); maxPoints = 30; break;
-      case '3M': startDate.setMonth(endDate.getMonth() - 3); maxPoints = 30; break;
-      case '6M': startDate.setMonth(endDate.getMonth() - 6); maxPoints = 30; break;
-      case '1Y': startDate.setFullYear(endDate.getFullYear() - 1); maxPoints = 40; break;
-      case '5Y': startDate.setFullYear(endDate.getFullYear() - 5); maxPoints = 50; break;
-      case '10Y': startDate.setFullYear(endDate.getFullYear() - 10); maxPoints = 50; break;
+      case '1M': startDate.setMonth(endDate.getMonth() - 1); maxPoints = 15; break;
+      case '3M': startDate.setMonth(endDate.getMonth() - 3); maxPoints = 18; break;
+      case '6M': startDate.setMonth(endDate.getMonth() - 6); maxPoints = 20; break;
+      case '1Y': startDate.setFullYear(endDate.getFullYear() - 1); maxPoints = 24; break;
+      case '5Y': startDate.setFullYear(endDate.getFullYear() - 5); maxPoints = 30; break;
+      case '10Y': startDate.setFullYear(endDate.getFullYear() - 10); maxPoints = 30; break;
     }
 
     const dates = generateDates(startDate, endDate, maxPoints);
     const baseLower = baseCode.toLowerCase();
     const targetLower = targetCode.toLowerCase();
 
-    // Fetch all dates in parallel (batched)
-    const results: { dateStr: string; rate: number }[] = [];
+    // Fetch dates in parallel using usd.json
+    const fetchPromises = dates.map(async (d) => {
+      try {
+        const url = `https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@${d}/v1/currencies/usd.json`;
+        const res = await fetch(url);
+        if (!res.ok) return null;
+        const data = await res.json();
+        const baseRate = baseLower === 'usd' ? 1 : (data.usd?.[baseLower] || 1);
+        const targetRate = targetLower === 'usd' ? 1 : (data.usd?.[targetLower] || 1);
+        return { dateStr: d, rate: targetRate / baseRate };
+      } catch {
+        return null;
+      }
+    });
 
-    // Batch in groups of 10 to avoid overwhelming the CDN
-    const batchSize = 10;
-    for (let i = 0; i < dates.length; i += batchSize) {
-      const batch = dates.slice(i, i + batchSize);
-      const batchResults = await Promise.all(
-        batch.map(async (dateStr) => {
-          try {
-            const url = `https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@${dateStr}/v1/currencies/${baseLower}.json`;
-            const res = await fetch(url);
-            const json = await res.json();
-            const rate = json[baseLower]?.[targetLower];
-            if (rate !== undefined) {
-              return { dateStr, rate: rate as number };
-            }
-          } catch (e) {
-            // Skip failed dates
-          }
-          return null;
-        })
-      );
-      for (const r of batchResults) {
-        if (r) results.push(r);
+    // Also fetch latest published
+    const latestPromise = fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json')
+      .then(r => r.json())
+      .then(data => {
+        const baseRate = baseLower === 'usd' ? 1 : (data.usd?.[baseLower] || 1);
+        const targetRate = targetLower === 'usd' ? 1 : (data.usd?.[targetLower] || 1);
+        const today = new Date().toISOString().split('T')[0];
+        return { dateStr: today, rate: targetRate / baseRate };
+      })
+      .catch(() => null);
+
+    const rawResults = await Promise.all([...fetchPromises, latestPromise]);
+    const results = rawResults.filter((r): r is { dateStr: string; rate: number } => r !== null && !isNaN(r.rate));
+    results.sort((a, b) => a.dateStr.localeCompare(b.dateStr));
+
+    // Deduplicate by date
+    const unique: { dateStr: string; rate: number }[] = [];
+    const seen = new Set<string>();
+    for (const r of results) {
+      if (!seen.has(r.dateStr)) {
+        seen.add(r.dateStr);
+        unique.push(r);
       }
     }
 
-    // Sort by date
-    results.sort((a, b) => a.dateStr.localeCompare(b.dateStr));
+    if (unique.length === 0) return [];
 
-    if (results.length === 0) return [];
+    // Distribute 4-5 evenly spaced labels to prevent overlap
+    const total = unique.length;
+    const labelInterval = Math.max(1, Math.floor(total / 4));
 
-    let lastMonth = -1;
-    let lastYear = -1;
-    let lastDay = -1;
-
-    const dataPoints: ChartDataPoint[] = results.map((r, i) => {
-      const date = new Date(r.dateStr + 'T00:00:00');
-      const day = date.getDate();
-      const month = date.getMonth();
-      const year = date.getFullYear();
+    const dataPoints: ChartDataPoint[] = unique.map((r, index) => {
+      const d = new Date(r.dateStr + 'T00:00:00');
+      const month = d.getMonth();
+      const day = d.getDate();
+      const year = d.getFullYear();
 
       let label = '';
+      const isFirst = index === 0;
+      const isLast = index === total - 1;
+      const isSample = index % labelInterval === 0 && !isLast;
 
-      if (['1D', '1W'].includes(timeframe)) {
-        label = `${MONTHS[month]} ${day}`;
-      } else if (timeframe === '1M') {
-        if (day % 5 === 0 || i === 0 || i === results.length - 1) {
-          if (lastDay !== day) label = `${MONTHS[month]} ${day}`;
-          lastDay = day;
-        }
-      } else if (['3M', '6M', '1Y'].includes(timeframe)) {
-        if (month !== lastMonth) {
-          label = `${MONTHS[month]} ${year}`;
-          lastMonth = month;
-        }
-      } else if (['5Y', '10Y'].includes(timeframe)) {
-        if (year !== lastYear) {
-          label = `${year}`;
-          lastYear = year;
+      if (isFirst || isLast || isSample) {
+        if (['1D', '1W', '1M', '3M'].includes(timeframe)) {
+          label = `${MONTHS[month]} ${day}`;
+        } else if (['6M', '1Y'].includes(timeframe)) {
+          label = `${MONTHS[month]} '${String(year).slice(-2)}`;
+        } else {
+          label = String(year);
         }
       }
 
       return {
         value: parseFloat(r.rate.toFixed(4)),
         label,
-        date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
       };
     });
 
@@ -127,7 +125,7 @@ const fetchWebHistory = async (baseCode: string, targetCode: string, timeframe: 
   }
 };
 
-// Native version: uses Yahoo Finance (no CORS issues on native)
+// Native version: uses Yahoo Finance (no browser CORS restrictions)
 const fetchNativeHistory = async (baseCode: string, targetCode: string, timeframe: Timeframe): Promise<ChartDataPoint[]> => {
   let range = '1mo';
   let interval = '1d';
@@ -152,7 +150,7 @@ const fetchNativeHistory = async (baseCode: string, targetCode: string, timefram
         return json.chart.result[0];
       }
     } catch (e) {
-      // silent
+      // ignore
     }
     return null;
   };
@@ -175,9 +173,8 @@ const fetchNativeHistory = async (baseCode: string, targetCode: string, timefram
       return closeArr[idx] || (idx > 0 ? closeArr[idx - 1] : 1);
     };
 
-    let lastMonth = -1;
-    let lastYear = -1;
-    let lastDay = -1;
+    const total = timestamps.length;
+    const labelInterval = Math.max(1, Math.floor(total / 5));
 
     for (let i = 0; i < timestamps.length; i++) {
       const baseVal = getValue(baseData, i);
@@ -191,22 +188,22 @@ const fetchNativeHistory = async (baseCode: string, targetCode: string, timefram
       const year = date.getFullYear();
 
       let label = '';
+      const isFirst = i === 0;
+      const isLast = i === total - 1;
+      const isSample = i % labelInterval === 0 && !isLast;
 
-      if (timeframe === '1D') {
-        const hours = date.getHours();
-        const mins = date.getMinutes();
-        if (mins === 0 && hours % 3 === 0) label = `${hours}:00`;
-      } else if (timeframe === '1W') {
-        label = `${MONTHS[month]} ${day}`;
-      } else if (timeframe === '1M') {
-        if (day % 5 === 0 || i === 0 || i === timestamps.length - 1) {
-          if (lastDay !== day) label = `${MONTHS[month]} ${day}`;
-          lastDay = day;
+      if (isFirst || isLast || isSample) {
+        if (timeframe === '1D') {
+          const hours = date.getHours();
+          const mins = date.getMinutes();
+          label = `${hours}:${mins < 10 ? '0' : ''}${mins}`;
+        } else if (['1W', '1M', '3M'].includes(timeframe)) {
+          label = `${MONTHS[month]} ${day}`;
+        } else if (['6M', '1Y'].includes(timeframe)) {
+          label = `${MONTHS[month]} '${String(year).slice(-2)}`;
+        } else {
+          label = `${year}`;
         }
-      } else if (['3M', '6M', '1Y'].includes(timeframe)) {
-        if (month !== lastMonth) { label = `${MONTHS[month]} ${year}`; lastMonth = month; }
-      } else if (['5Y', '10Y'].includes(timeframe)) {
-        if (year !== lastYear) { label = `${year}`; lastYear = year; }
       }
 
       dataPoints.push({
