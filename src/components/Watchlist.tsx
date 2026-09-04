@@ -404,10 +404,16 @@ export default function Watchlist() {
     const isBase = (editingCurrency || calcBaseCurrency) === item.code;
     const amount = calculateAmount(item.code);
     
+    const len = amount.length;
     const dynamicFontSize = 
-      amount.length > 15 ? 15 :
-      amount.length > 12 ? 18 :
-      amount.length > 9 ? 20 : 22;
+      len > 21 ? 10 :
+      len > 18 ? 11 :
+      len > 16 ? 12 :
+      len > 14 ? 13.5 :
+      len > 12 ? 15 :
+      len > 10 ? 17 :
+      len > 8 ? 19 :
+      len > 7 ? 21 : 22;
 
     const isThisDragged = draggedIndex === index;
     const anyDragging = draggedIndex !== null;
@@ -492,6 +498,8 @@ export default function Watchlist() {
                 { fontSize: dynamicFontSize }
               ]}
               numberOfLines={1}
+              adjustsFontSizeToFit={true}
+              minimumFontScale={0.45}
             >
               {amount}
             </Text>
@@ -942,8 +950,10 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     textAlign: 'right',
     paddingVertical: 2,
+    flexShrink: 1,
     ...(Platform.OS === 'web' ? {
       fontVariant: ['tabular-nums'],
+      whiteSpace: 'nowrap',
     } as any : {}),
   },
   rateCursor: {

@@ -85,11 +85,16 @@ export default function CurrencyItem({
     }, 50);
   };
   
-  // Dynamically reduce font size for long numbers to prevent overflow
+  const len = amount.length;
   const dynamicFontSize = 
-    amount.length > 15 ? 15 :
-    amount.length > 12 ? 18 :
-    amount.length > 9 ? 20 : 22;
+    len > 21 ? 10 :
+    len > 18 ? 11 :
+    len > 16 ? 12 :
+    len > 14 ? 13.5 :
+    len > 12 ? 15 :
+    len > 10 ? 17 :
+    len > 8 ? 19 :
+    len > 7 ? 21 : 22;
 
   return (
     <ScaleDecorator>
@@ -198,6 +203,7 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     textAlign: 'right',
     flex: 1,
+    flexShrink: 1,
     paddingVertical: 2,
   },
   baseRateText: {
