@@ -76,7 +76,7 @@ export default function HistoryChart() {
           height,
           layout: {
             background: { type: 'solid', color: 'transparent' },
-            textColor: '#8A99AF',
+            textColor: '#ffffff',
           },
           grid: {
             vertLines: { visible: false },
@@ -85,6 +85,7 @@ export default function HistoryChart() {
           rightPriceScale: {
             visible: true,
             borderVisible: false,
+            textColor: '#ffffff',
           },
           timeScale: {
             borderVisible: false,
@@ -101,10 +102,12 @@ export default function HistoryChart() {
         chartRef.current = chart;
 
         const lineSeries = chart.addAreaSeries({
-          lineColor: '#2962FF',
-          topColor: 'rgba(41, 98, 255, 0.4)',
-          bottomColor: 'rgba(41, 98, 255, 0.0)',
+          color: '#ffffff',
+          lineColor: '#ffffff',
+          topColor: 'rgba(255, 255, 255, 0.35)',
+          bottomColor: 'rgba(255, 255, 255, 0.0)',
           lineWidth: 2,
+          priceLineColor: '#ffffff',
         });
         seriesRef.current = lineSeries;
 
@@ -147,27 +150,51 @@ export default function HistoryChart() {
 
   const applyDataToSeries = (data: ChartDataPoint[], series: any, chartInst: any) => {
     try {
+      console.log(`[Data Verification] Total received data points: ${data?.length || 0}`);
+      if (!data || data.length === 0) {
+        console.warn('[Data Verification] Warning: chart data array is empty!');
+        return;
+      }
+
       // Map to strict { time, value } format and sanitize
-      const formattedData = data.map(d => ({
-        time: typeof d.timestamp === 'number' && !isNaN(d.timestamp) ? d.timestamp : 0,
-        value: typeof d.value === 'number' && !isNaN(d.value) ? d.value : 0,
-      })).filter(d => d.time > 0);
+      const formattedData = data.map(d => {
+        let timeVal: any = d.timestamp;
+        if (d.dateStr && /^\d{4}-\d{2}-\d{2}$/.test(d.dateStr) && timeframe !== '1D') {
+          timeVal = d.dateStr;
+        } else if (typeof d.timestamp === 'number' && !isNaN(d.timestamp) && d.timestamp > 0) {
+          timeVal = Math.floor(d.timestamp);
+        }
+
+        return {
+          time: timeVal,
+          value: typeof d.value === 'number' && !isNaN(d.value) ? d.value : 0,
+        };
+      }).filter(d => Boolean(d.time) && d.value > 0);
 
       // Ensure strict chronological order and unique timestamps
       const uniqueData: any[] = [];
       const seen = new Set();
       for (const d of formattedData) {
-        if (!seen.has(d.time)) {
-          seen.add(d.time);
+        const key = String(d.time);
+        if (!seen.has(key)) {
+          seen.add(key);
           uniqueData.push(d);
         }
       }
-      uniqueData.sort((a, b) => a.time - b.time);
+
+      uniqueData.sort((a, b) => {
+        if (typeof a.time === 'string' && typeof b.time === 'string') {
+          return a.time.localeCompare(b.time);
+        }
+        return Number(a.time) - Number(b.time);
+      });
+
+      console.log(`[Data Verification] Passing ${uniqueData.length} verified points to series.setData(). First:`, uniqueData[0], 'Last:', uniqueData[uniqueData.length - 1]);
 
       series.setData(uniqueData);
       chartInst.timeScale().fitContent();
     } catch (e) {
-      console.error('Lightweight charts data formatting error:', e);
+      console.error('[Data Verification] Error setting series data:', e);
     }
   };
 
@@ -183,6 +210,24 @@ export default function HistoryChart() {
           .tv-chart-container {
             touch-action: none !important;
           }
+          /* Force pure white text on all currency dropdown selectors and expanded menu items */
+          .dropdown-pill,
+          .dropdown-pill *,
+          [class*="dropdown"],
+          [class*="Dropdown"],
+          [class*="dropdown"] *,
+          [class*="Dropdown"] *,
+          div[role="combobox"],
+          div[role="combobox"] *,
+          div[role="listbox"],
+          div[role="listbox"] *,
+          input {
+            color: #ffffff !important;
+          }
+          div[role="listbox"] {
+            background-color: #1C1C1E !important;
+            border: 1px solid #2C2C2E !important;
+          }
         `}</style>
       )}
       
@@ -196,13 +241,22 @@ export default function HistoryChart() {
             labelField="code"
             valueField="code"
             value={baseCurrency}
-            onChange={item => setBaseCurrency(item.code)}
+            onChange={item => setBaseCurrency(item.code || item.value)}
+            placeholderStyle={styles.dropdownText}
             selectedTextStyle={styles.dropdownText}
             itemTextStyle={styles.dropdownItemText}
+            itemContainerStyle={{ backgroundColor: '#1C1C1E' }}
             containerStyle={styles.dropdownPopup}
-            activeColor="rgba(255,255,255,0.1)"
+            activeColor="#2C2C2E"
             iconColor="#FFFFFF"
             showsVerticalScrollIndicator={false}
+            renderItem={(item) => (
+              <View style={styles.dropdownItemRow}>
+                <Text style={styles.dropdownItemText}>
+                  {item.code || item.value} - {item.label?.split(' - ')[1] || item.label}
+                </Text>
+              </View>
+            )}
           />
         </View>
 
@@ -218,13 +272,22 @@ export default function HistoryChart() {
             labelField="code"
             valueField="code"
             value={targetCurrency}
-            onChange={item => setTargetCurrency(item.code)}
+            onChange={item => setTargetCurrency(item.code || item.value)}
+            placeholderStyle={styles.dropdownText}
             selectedTextStyle={styles.dropdownText}
             itemTextStyle={styles.dropdownItemText}
+            itemContainerStyle={{ backgroundColor: '#1C1C1E' }}
             containerStyle={styles.dropdownPopup}
-            activeColor="rgba(255,255,255,0.1)"
+            activeColor="#2C2C2E"
             iconColor="#FFFFFF"
             showsVerticalScrollIndicator={false}
+            renderItem={(item) => (
+              <View style={styles.dropdownItemRow}>
+                <Text style={styles.dropdownItemText}>
+                  {item.code || item.value} - {item.label?.split(' - ')[1] || item.label}
+                </Text>
+              </View>
+            )}
           />
         </View>
       </View>
@@ -328,10 +391,18 @@ const styles = StyleSheet.create({
   },
   dropdownItemText: {
     color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  dropdownItemRow: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: '#1C1C1E',
   },
   dropdownPopup: {
     backgroundColor: '#1C1C1E',
-    borderWidth: 0,
+    borderWidth: 1,
+    borderColor: '#2C2C2E',
     borderRadius: 12,
   },
   swapButton: {
