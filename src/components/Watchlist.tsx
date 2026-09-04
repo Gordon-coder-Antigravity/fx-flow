@@ -406,9 +406,9 @@ export default function Watchlist() {
     
     const len = amount.length;
     const dynamicFontSize = 
-      len > 21 ? 10 :
-      len > 18 ? 11 :
-      len > 16 ? 12 :
+      len > 21 ? 9.5 :
+      len > 18 ? 10 :
+      len > 16 ? 11 :
       len > 14 ? 13.5 :
       len > 12 ? 15 :
       len > 10 ? 17 :
