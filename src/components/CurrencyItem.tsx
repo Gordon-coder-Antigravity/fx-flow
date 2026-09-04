@@ -115,6 +115,9 @@ export default function CurrencyItem({
             returnKeyType="done"
             selectTextOnFocus={true}
             editable={true}
+            adjustsFontSizeToFit={true}
+            minimumFontScale={0.5}
+            numberOfLines={1}
           />
           <TouchableOpacity onPress={() => onRemove(item.id)} style={styles.removeButton}>
             <Ionicons name="close-outline" size={20} color="#8A99AF" />
@@ -153,7 +156,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   infoContainer: {
-    flex: 1,
+    flex: 0.9,
     paddingRight: 8,
   },
   codeText: {
@@ -175,7 +178,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    flex: 1,
+    flex: 1.1,
     gap: 8,
     position: 'relative',
     zIndex: 10,
@@ -186,7 +189,7 @@ const styles = StyleSheet.create({
     fontWeight: '300',
     textAlign: 'right',
     flex: 1,
-    maxWidth: '80%',
+    maxWidth: '90%',
     paddingVertical: 4,
   },
   baseRateText: {
