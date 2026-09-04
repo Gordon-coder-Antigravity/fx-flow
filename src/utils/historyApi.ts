@@ -90,7 +90,7 @@ function generateIntradayData(baseRate: number, targetRate: number): ChartDataPo
 function generateFallbackHistory(baseCode: string, targetCode: string, timeframe: Timeframe): ChartDataPoint[] {
   const BASELINE_RATES: Record<string, number> = {
     USD: 1, EUR: 0.92, CAD: 1.36, TWD: 32.0, JPY: 154.0, CNY: 7.25, 
-    MYR: 4.7, GBP: 0.79, AUD: 1.52, PHP: 58.0, TRY: 32.5
+    MYR: 4.7, GBP: 0.79, AUD: 1.52, SGD: 1.35, PHP: 58.0, TRY: 32.5
   };
 
   const baseRate = BASELINE_RATES[baseCode.toUpperCase()] || 1;

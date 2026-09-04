@@ -8,6 +8,7 @@ export const AVAILABLE_CURRENCIES = [
   { label: 'MYR - Malaysian Ringgit', value: 'MYR', code: 'MYR', symbol: 'RM' },
   { label: 'GBP - British Pound', value: 'GBP', code: 'GBP', symbol: '£' },
   { label: 'AUD - Australian Dollar', value: 'AUD', code: 'AUD', symbol: 'A$' },
+  { label: 'SGD - Singapore Dollar', value: 'SGD', code: 'SGD', symbol: 'S$' },
   { label: 'PHP - Philippine Peso', value: 'PHP', code: 'PHP', symbol: '₱' },
   { label: 'TRY - Turkish Lira', value: 'TRY', code: 'TRY', symbol: '₺' },
 ];

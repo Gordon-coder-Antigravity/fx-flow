@@ -11,7 +11,7 @@ const TIMEFRAMES: Timeframe[] = ['1D', '5D', '1M', '3M', '6M', 'YTD', '1Y', '5Y'
 
 const FLAGS: Record<string, string> = {
   USD: '🇺🇸', EUR: '🇪🇺', CAD: '🇨🇦', TWD: '🇹🇼', JPY: '🇯🇵', CNY: '🇨🇳', 
-  MYR: '🇲🇾', GBP: '🇬🇧', AUD: '🇦🇺', PHP: '🇵🇭', TRY: '🇹🇷'
+  MYR: '🇲🇾', GBP: '🇬🇧', AUD: '🇦🇺', SGD: '🇸🇬', PHP: '🇵🇭', TRY: '🇹🇷'
 };
 
 const TIMEFRAME_INTERVALS: Record<Timeframe, string> = {
