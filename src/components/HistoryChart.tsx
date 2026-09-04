@@ -58,6 +58,33 @@ export default function HistoryChart() {
 
   const screenWidth = Dimensions.get('window').width;
 
+  // Strict Event Prevention for Web to block native pinch/swipe
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const node = chartInnerViewRef.current as any;
+    if (!node) return;
+
+    // Use raw DOM listeners to enforce passive: false
+    const preventDefault = (e: TouchEvent) => {
+      // Allow single finger touch to pass if we want, but preventing default
+      // stops page scroll and pinch zoom, yielding control to JS.
+      if (e.touches && e.touches.length >= 2) {
+        e.preventDefault();
+      }
+      // Also prevent default on single touch to stop pull-to-refresh or swipe-back,
+      // but ensure our JS handlers (like updateHighlightAtX) can still read the coordinates.
+      e.preventDefault(); 
+    };
+
+    node.addEventListener('touchstart', preventDefault, { passive: false });
+    node.addEventListener('touchmove', preventDefault, { passive: false });
+
+    return () => {
+      node.removeEventListener('touchstart', preventDefault);
+      node.removeEventListener('touchmove', preventDefault);
+    };
+  }, []);
+
   useEffect(() => {
     setSelectedPoint(null);
     loadData();
@@ -322,6 +349,14 @@ export default function HistoryChart() {
         { paddingTop: Math.max(insets.top, 16) + 8, paddingBottom: 16 }
       ]}
     >
+      {Platform.OS === 'web' && (
+        <style type="text/css">{`
+          .strict-touch-action {
+            touch-action: none !important;
+          }
+        `}</style>
+      )}
+      
       {/* Currency Selectors */}
       <View style={styles.selectorsContainer}>
         <View style={styles.pillContainer}>
@@ -396,7 +431,7 @@ export default function HistoryChart() {
       <View style={styles.chartWrapper}>
         {/* .chart-container: flex: 1 and min-height: 0 so chart stretches to become taller */}
         {/* .chart-container: dual-layer layout with absolute-positioned pinned Y-axis overlay */}
-        <View style={styles.chartDualLayerContainer} onLayout={onChartContainerLayout}>
+        <View style={styles.chartDualLayerContainer} onLayout={onChartContainerLayout} {...(Platform.OS === 'web' ? { className: 'strict-touch-action' } : {})}>
           {loading ? (
             <View style={styles.loadingWrapper}>
               <ActivityIndicator color="#2962FF" size="large" />
@@ -487,6 +522,7 @@ export default function HistoryChart() {
                       onMouseUp: handlePointerUp,
                       onMouseLeave: handlePointerUp,
                       onWheel: handleWheel,
+                      className: 'strict-touch-action'
                     } : {})}
                   >
                     {/* Vertical guideline for active point */}
