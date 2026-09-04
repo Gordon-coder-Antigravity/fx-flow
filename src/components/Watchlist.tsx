@@ -178,15 +178,21 @@ export default function Watchlist() {
     const currentVal = (calcAmount / rateBase) * rateTarget;
     setEditingValue(currentVal.toFixed(4));
 
-    // Scroll so the bottom of the input box attaches right to the top of the keyboard
+    // Scroll so the bottom of the tapped input box attaches right to the top frame of the keyboard
     const scrollInputToKeypad = () => {
       if (Platform.OS === 'web') {
-        const rateBtnEl = document.querySelector(`[data-rate-btn="${code}"]`) as HTMLElement;
-        const rowEl = document.querySelector(`[data-currency-row="${code}"]`) as HTMLElement;
+        const rateBtnEl = (document.getElementById(`rate-btn-${code}`) 
+          || document.querySelector(`[data-rate-btn="${code}"]`)) as HTMLElement;
+        const rowEl = (document.getElementById(`currency-row-${code}`) 
+          || document.querySelector(`[data-currency-row="${code}"]`)) as HTMLElement;
         const targetEl = rateBtnEl || rowEl;
+
+        const keypadEl = (document.getElementById('ios-keypad-overlay') 
+          || document.querySelector('.ios-keypad-overlay')) as HTMLElement;
 
         if (targetEl && targetEl.getBoundingClientRect) {
           const scrollParent: HTMLElement | null =
+            (listRef.current?.getScrollResponder?.()?.getScrollableNode?.() as HTMLElement) ||
             (listRef.current?.getScrollableNode?.() as HTMLElement) ||
             (() => {
               let p = targetEl.parentElement;
@@ -200,22 +206,31 @@ export default function Watchlist() {
               return null;
             })();
 
-          const keypadEl = document.querySelector('.ios-keypad-overlay') as HTMLElement;
-          const keypadTop = keypadEl && keypadEl.getBoundingClientRect().top > 0
-            ? keypadEl.getBoundingClientRect().top
-            : (window.innerHeight - 288);
+          const keypadRect = keypadEl ? keypadEl.getBoundingClientRect() : null;
+          const keypadTop = (keypadRect && keypadRect.top > 0)
+            ? keypadRect.top
+            : (window.innerHeight - 285);
 
-          // Target: bottom of input box attaches directly to the top edge of the keyboard
-          const rect = targetEl.getBoundingClientRect();
-          const targetBottomY = keypadTop - 2;
-          const delta = rect.bottom - targetBottomY;
+          const currentBottom = targetEl.getBoundingClientRect().bottom;
+          const diff = currentBottom - keypadTop;
 
-          if (Math.abs(delta) > 2) {
-            if (scrollParent) {
-              scrollParent.scrollBy({ top: delta, behavior: 'smooth' });
-            } else {
-              window.scrollBy({ top: delta, behavior: 'smooth' });
-            }
+          if (scrollParent) {
+            const currentScrollTop = scrollParent.scrollTop;
+            const targetScrollTop = Math.max(0, currentScrollTop + diff);
+            scrollParent.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+          } else {
+            window.scrollBy({ top: diff, behavior: 'smooth' });
+          }
+
+          if (listRef.current?.scrollToOffset) {
+            const currentScrollTop = scrollParent ? scrollParent.scrollTop : 0;
+            const targetScrollTop = Math.max(0, currentScrollTop + diff);
+            try {
+              listRef.current.scrollToOffset({
+                offset: targetScrollTop,
+                animated: true,
+              });
+            } catch (_) {}
           }
           return;
         }
@@ -224,7 +239,7 @@ export default function Watchlist() {
       if (typeof index === 'number' && listRef.current) {
         const itemBottomInList = (index + 1) * 68;
         const screenH = typeof window !== 'undefined' ? window.innerHeight : 667;
-        const visibleHeightAboveKeypad = Math.max(100, screenH - 288 - 150);
+        const visibleHeightAboveKeypad = Math.max(100, screenH - 285 - 150);
         const targetOffset = Math.max(0, itemBottomInList - visibleHeightAboveKeypad);
         try {
           listRef.current.scrollToOffset({
@@ -235,8 +250,9 @@ export default function Watchlist() {
       }
     };
 
-    setTimeout(scrollInputToKeypad, 60);
-    setTimeout(scrollInputToKeypad, 160);
+    setTimeout(scrollInputToKeypad, 40);
+    setTimeout(scrollInputToKeypad, 140);
+    setTimeout(scrollInputToKeypad, 280);
 
     if (e?.target?.select) {
       e.target.select();
@@ -507,6 +523,8 @@ export default function Watchlist() {
           Platform.OS === 'web' && itemWebStyle,
         ]}
         {...(Platform.OS === 'web' ? {
+          nativeID: `currency-row-${item.code}`,
+          id: `currency-row-${item.code}`,
           'data-currency-row': item.code,
           'data-currency-code': item.code,
           draggable: true,
@@ -553,7 +571,11 @@ export default function Watchlist() {
             style={[styles.rateDisplayBtn, editingCurrency === item.code && styles.rateDisplayBtnActive]}
             onPress={(e) => handleFocus(item.code, index, e)}
             activeOpacity={0.7}
-            {...(Platform.OS === 'web' ? { 'data-rate-btn': item.code } as any : {})}
+            {...(Platform.OS === 'web' ? { 
+              nativeID: `rate-btn-${item.code}`,
+              id: `rate-btn-${item.code}`,
+              'data-rate-btn': item.code 
+            } as any : {})}
           >
             <Text
               style={[
@@ -774,7 +796,11 @@ export default function Watchlist() {
           {/* Bottom Frosted Keypad Card */}
           <View 
             style={styles.keypadOverlay}
-            {...(Platform.OS === 'web' ? { className: 'ios-keypad-overlay' } : {})}
+            {...(Platform.OS === 'web' ? { 
+              nativeID: 'ios-keypad-overlay',
+              id: 'ios-keypad-overlay',
+              className: 'ios-keypad-overlay' 
+            } : {})}
           >
             {/* Floating Done Button */}
             <View style={styles.doneBar}>
@@ -934,7 +960,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   listContentContainer: {
-    paddingBottom: 360,
+    paddingBottom: 420,
   },
   loadingContainer: {
     flex: 1,
