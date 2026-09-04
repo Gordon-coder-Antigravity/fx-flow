@@ -653,8 +653,9 @@ export default function Watchlist() {
             box-sizing: border-box !important;
             z-index: 2 !important;
             padding-bottom: max(28px, env(safe-area-inset-bottom, 28px)) !important;
-            backdrop-filter: blur(28px) !important;
-            -webkit-backdrop-filter: blur(28px) !important;
+            background-color: rgba(215, 218, 226, 0.38) !important;
+            backdrop-filter: blur(10px) !important;
+            -webkit-backdrop-filter: blur(10px) !important;
             border-top-left-radius: 20px !important;
             border-top-right-radius: 20px !important;
             border-bottom-left-radius: 0px !important;
@@ -1074,7 +1075,7 @@ const styles = StyleSheet.create({
   keypadOverlay: {
     position: 'relative',
     width: '100%',
-    backgroundColor: 'rgba(215, 218, 226, 0.96)',
+    backgroundColor: 'rgba(215, 218, 226, 0.38)',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     borderBottomLeftRadius: 0,
@@ -1085,12 +1086,12 @@ const styles = StyleSheet.create({
     zIndex: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.2,
     shadowRadius: 16,
     elevation: 25,
     ...(Platform.OS === 'web' ? {
-      backdropFilter: 'blur(28px)',
-      WebkitBackdropFilter: 'blur(28px)',
+      backdropFilter: 'blur(10px)',
+      WebkitBackdropFilter: 'blur(10px)',
       boxSizing: 'border-box',
     } as any : {}),
   },
@@ -1101,7 +1102,7 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
   },
   doneButton: {
-    backgroundColor: 'rgba(20, 28, 48, 0.85)',
+    backgroundColor: 'rgba(20, 28, 48, 0.75)',
     paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: 20,
@@ -1125,15 +1126,19 @@ const styles = StyleSheet.create({
   keypadKey: {
     flex: 1,
     height: 48,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1.5 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.15,
     shadowRadius: 1,
     elevation: 2,
+    ...(Platform.OS === 'web' ? {
+      backdropFilter: 'blur(4px)',
+      WebkitBackdropFilter: 'blur(4px)',
+    } as any : {}),
   },
   keyNumber: {
     color: '#111827',
