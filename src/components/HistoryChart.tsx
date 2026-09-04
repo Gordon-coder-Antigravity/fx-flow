@@ -309,6 +309,14 @@ export default function HistoryChart() {
             white-space: nowrap !important;
             color: #ffffff !important;
           }
+          .zoom-buttons-row {
+            opacity: 0.55 !important;
+            transition: opacity 0.2s ease, background-color 0.2s ease !important;
+          }
+          .zoom-buttons-row:hover {
+            opacity: 0.95 !important;
+            background-color: rgba(22, 31, 46, 0.75) !important;
+          }
         `}</style>
       )}
       
@@ -424,7 +432,10 @@ export default function HistoryChart() {
           {/* Yahoo Finance Volume & Zoom Controls Overlay */}
           <View style={styles.chartControlsOverlay} pointerEvents="box-none">
             <Text style={styles.volumeWatermark}>Volume Not Available</Text>
-            <View style={styles.zoomButtonsRow}>
+            <View 
+              style={styles.zoomButtonsRow} 
+              {...(Platform.OS === 'web' ? { className: 'zoom-buttons-row' } : {})}
+            >
               <TouchableOpacity style={styles.zoomBtn} onPress={() => handleZoom('out')}>
                 <Ionicons name="remove" size={14} color="#C4D1EB" />
               </TouchableOpacity>
@@ -637,29 +648,30 @@ const styles = StyleSheet.create({
   },
   chartControlsOverlay: {
     position: 'absolute',
-    bottom: 8,
+    bottom: 28,
     left: 0,
     right: 0,
     alignItems: 'center',
     zIndex: 5,
   },
   volumeWatermark: {
-    color: '#42516B',
-    fontSize: 11,
+    color: 'rgba(66, 81, 107, 0.7)',
+    fontSize: 10,
     fontWeight: '500',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   zoomButtonsRow: {
     flexDirection: 'row',
-    backgroundColor: '#161F2E',
+    backgroundColor: 'rgba(22, 31, 46, 0.35)',
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#243247',
+    borderColor: 'rgba(36, 50, 71, 0.4)',
     overflow: 'hidden',
+    opacity: 0.6,
   },
   zoomBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
   timeframeWrapper: {
     height: 44,
