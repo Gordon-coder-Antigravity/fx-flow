@@ -472,7 +472,7 @@ export default function Watchlist() {
             }
           } as any : {})}
         >
-          <Ionicons name="menu-outline" size={24} color={isThisDragged ? '#00B4D8' : '#8A99AF'} />
+          <Ionicons name="menu-outline" size={18} color={isThisDragged ? '#00B4D8' : '#8A99AF'} />
         </View>
 
         <TouchableOpacity 
@@ -867,12 +867,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 16,
+    gap: 8,
     paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#1A253C',
     position: 'relative',
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     backgroundColor: 'transparent',
   },
   itemContainerBase: {
@@ -898,15 +898,15 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 4,
   },
   dragHandle: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 4,
     paddingVertical: 8,
     justifyContent: 'center',
     alignItems: 'center',
   },
   infoContainer: {
-    width: 90,
+    width: 80,
     flexShrink: 0,
-    paddingRight: 6,
+    paddingRight: 4,
   },
   codeText: {
     color: '#FFFFFF',
@@ -938,7 +938,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-end',
     paddingVertical: 4,
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     borderRadius: 8,
   },
   rateDisplayBtnActive: {
@@ -968,8 +968,8 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   removeButton: {
-    padding: 6,
-    marginLeft: 4,
+    padding: 4,
+    marginLeft: 2,
   },
   // iOS Numeric Keypad Styles (Image 1)
   modalRoot: {

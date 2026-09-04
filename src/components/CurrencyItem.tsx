@@ -102,7 +102,7 @@ export default function CurrencyItem({
         {isBase && <View style={styles.baseIndicator} pointerEvents="none" />}
         
         <TouchableOpacity onLongPress={drag} delayLongPress={100} style={styles.dragHandle}>
-          <Ionicons name="menu-outline" size={24} color="#8A99AF" />
+          <Ionicons name="menu-outline" size={18} color="#8A99AF" />
         </TouchableOpacity>
 
         <TouchableOpacity 
@@ -146,12 +146,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 16,
+    gap: 8,
     paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#1A253C',
     position: 'relative',
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
   },
   baseIndicator: {
     position: 'absolute',
@@ -164,14 +164,14 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 4,
   },
   dragHandle: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 4,
     justifyContent: 'center',
     alignItems: 'center',
   },
   infoContainer: {
-    width: 90,
+    width: 80,
     flexShrink: 0,
-    paddingRight: 6,
+    paddingRight: 4,
   },
   codeText: {
     color: '#FFFFFF',
@@ -211,7 +211,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   removeButton: {
-    padding: 6,
-    marginLeft: 4,
+    padding: 4,
+    marginLeft: 2,
   }
 });
