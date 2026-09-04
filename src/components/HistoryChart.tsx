@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, ActivityIndicator, LayoutChangeEvent } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, ActivityIndicator, LayoutChangeEvent, Platform } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
 import { Dropdown } from 'react-native-element-dropdown';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { PinchGestureHandler, State, PinchGestureHandlerGestureEvent, PinchGestureHandlerStateChangeEvent } from 'react-native-gesture-handler';
 
 import { AVAILABLE_CURRENCIES } from '../utils/mockData';
 import { fetchHistory, Timeframe, ChartDataPoint } from '../utils/historyApi';
@@ -30,25 +29,13 @@ export default function HistoryChart() {
   const [trendColor, setTrendColor] = useState('#2962FF');
   const [lastDate, setLastDate] = useState('');
 
-  const [zoomScale, setZoomScale] = useState(1);
-  const baseScale = useRef(1);
   const horizontalScrollRef = useRef<ScrollView>(null);
+  const isDragging = useRef(false);
+  const startX = useRef(0);
+  const scrollLeftPos = useRef(0);
 
   // Dynamic chart height to fill remaining vertical space
   const [chartHeight, setChartHeight] = useState(240);
-
-  const onPinchEvent = (event: PinchGestureHandlerGestureEvent) => {
-    let newScale = baseScale.current * event.nativeEvent.scale;
-    if (newScale < 0.5) newScale = 0.5;
-    if (newScale > 5) newScale = 5;
-    setZoomScale(newScale);
-  };
-
-  const onPinchStateChange = (event: PinchGestureHandlerStateChangeEvent) => {
-    if (event.nativeEvent.oldState === State.ACTIVE) {
-      baseScale.current = zoomScale;
-    }
-  };
 
   // Y-axis scaling
   const [yAxisOffset, setYAxisOffset] = useState(0);
@@ -57,20 +44,51 @@ export default function HistoryChart() {
   const screenWidth = Dimensions.get('window').width;
 
   useEffect(() => {
-    setZoomScale(1);
-    baseScale.current = 1;
     loadData();
   }, [baseCurrency, targetCurrency, timeframe]);
 
   // Scroll to the latest data point on the right whenever data loads
   useEffect(() => {
-    if (horizontalScrollRef.current && chartData.length > 0) {
+    if (chartData.length > 0) {
       const timer = setTimeout(() => {
-        horizontalScrollRef.current?.scrollToEnd({ animated: false });
+        try {
+          horizontalScrollRef.current?.scrollToEnd({ animated: false });
+        } catch (e) {}
+        if (Platform.OS === 'web') {
+          const node = (horizontalScrollRef.current as any)?.getScrollableNode?.() || (horizontalScrollRef.current as any);
+          if (node && typeof node.scrollLeft === 'number') {
+            node.scrollLeft = node.scrollWidth || 99999;
+          }
+        }
       }, 100);
       return () => clearTimeout(timer);
     }
   }, [chartData, timeframe]);
+
+  const handleMouseDown = (e: any) => {
+    if (Platform.OS !== 'web') return;
+    isDragging.current = true;
+    startX.current = e.pageX ?? e.clientX ?? 0;
+    const node = (horizontalScrollRef.current as any)?.getScrollableNode?.() || (horizontalScrollRef.current as any);
+    if (node && typeof node.scrollLeft === 'number') {
+      scrollLeftPos.current = node.scrollLeft;
+    }
+  };
+
+  const handleMouseMove = (e: any) => {
+    if (Platform.OS !== 'web' || !isDragging.current) return;
+    const currentX = e.pageX ?? e.clientX ?? 0;
+    const walk = (startX.current - currentX);
+    const node = (horizontalScrollRef.current as any)?.getScrollableNode?.() || (horizontalScrollRef.current as any);
+    if (node && typeof node.scrollLeft === 'number') {
+      node.scrollLeft = scrollLeftPos.current + walk;
+    }
+  };
+
+  const handleMouseUp = () => {
+    if (Platform.OS !== 'web') return;
+    isDragging.current = false;
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -130,9 +148,8 @@ export default function HistoryChart() {
     }
   };
 
-  // Wide minimum width (e.g., 800px) so line stretches out comfortably for mobile swiping
-  const baseWidth = Math.max(800, chartData.length * 36);
-  const chartContentWidth = Math.floor(baseWidth * zoomScale);
+  // Wide minimum width (800px) so line stretches out comfortably for mobile swiping / sliding
+  const chartContentWidth = Math.max(800, chartData.length * 36);
   const calculatedSpacing = chartData.length > 1
     ? Math.floor((chartContentWidth - 40) / (chartData.length - 1))
     : 40;
@@ -237,78 +254,60 @@ export default function HistoryChart() {
             /* Split layout: Horizontally scrollable chart on left/center + Fixed Y-axis container permanently pinned on RIGHT */
             <View style={styles.splitChartLayout}>
               {/* Overflow-x container for the chart line and X-axis (min-width: 800px) */}
-              <PinchGestureHandler
-                onGestureEvent={onPinchEvent}
-                onHandlerStateChange={onPinchStateChange}
+              <ScrollView
+                ref={horizontalScrollRef}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                bounces={false}
+                style={styles.scrollableChartArea}
+                contentContainerStyle={{ width: chartContentWidth }}
+                {...(Platform.OS === 'web' ? {
+                  onMouseDown: handleMouseDown,
+                  onMouseMove: handleMouseMove,
+                  onMouseUp: handleMouseUp,
+                  onMouseLeave: handleMouseUp,
+                } : {})}
               >
-                <ScrollView
-                  ref={horizontalScrollRef}
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  bounces={false}
-                  style={styles.scrollableChartArea}
-                  contentContainerStyle={{ width: chartContentWidth }}
-                >
-                  <LineChart
-                    data={chartData}
-                    width={chartContentWidth}
-                    height={chartHeight}
-                    spacing={calculatedSpacing}
-                    initialSpacing={20}
-                    endSpacing={30}
-                    color="#2962FF"
-                    thickness={2.5}
-                    startFillColor="#2962FF"
-                    endFillColor="#2962FF"
-                    startOpacity={0.25}
-                    endOpacity={0.01}
-                    hideYAxisText={true}
-                    yAxisLabelWidth={0}
-                    yAxisThickness={0}
-                    yAxisColor="transparent"
-                    xAxisColor="transparent"
-                    rulesLength={chartContentWidth}
-                    yAxisOffset={yAxisOffset}
-                    maxValue={maxYValue}
-                    noOfSections={4}
-                    rulesColor="#1A253C"
-                    rulesType="dotted"
-                    hideDataPoints={false}
-                    maintainAspectRatio={false}
-                    disableScroll={true}
-                    xAxisLabelsHeight={24}
-                    labelsExtraHeight={16}
-                    overflowBottom={24}
-                    xAxisLabelTextStyle={{ 
-                      color: '#5C6B89', 
-                      fontSize: 11, 
-                      width: 76, 
-                      textAlign: 'center', 
-                      marginLeft: -28,
-                      transform: [{ rotate: '0deg' }]
-                    }}
-                    pointerConfig={{
-                      pointerStripHeight: chartHeight,
-                      pointerStripColor: '#5C6B89',
-                      pointerStripWidth: 1,
-                      pointerColor: '#2962FF',
-                      radius: 5,
-                      pointerLabelWidth: 110,
-                      pointerLabelHeight: 80,
-                      activatePointersOnLongPress: true,
-                      autoAdjustPointerLabelPosition: true,
-                      pointerLabelComponent: (items: any) => {
-                        return (
-                          <View style={styles.tooltipContainer}>
-                            <Text style={styles.tooltipDate}>{items[0].date}</Text>
-                            <Text style={styles.tooltipValue}>{items[0].value.toFixed(4)}</Text>
-                          </View>
-                        );
-                      },
-                    }}
-                  />
-                </ScrollView>
-              </PinchGestureHandler>
+                <LineChart
+                  data={chartData}
+                  width={chartContentWidth}
+                  height={chartHeight}
+                  spacing={calculatedSpacing}
+                  initialSpacing={20}
+                  endSpacing={30}
+                  color="#2962FF"
+                  thickness={2.5}
+                  startFillColor="#2962FF"
+                  endFillColor="#2962FF"
+                  startOpacity={0.25}
+                  endOpacity={0.01}
+                  hideYAxisText={true}
+                  yAxisLabelWidth={0}
+                  yAxisThickness={0}
+                  yAxisColor="transparent"
+                  xAxisColor="transparent"
+                  rulesLength={chartContentWidth}
+                  yAxisOffset={yAxisOffset}
+                  maxValue={maxYValue}
+                  noOfSections={4}
+                  rulesColor="#1A253C"
+                  rulesType="dotted"
+                  hideDataPoints={false}
+                  maintainAspectRatio={false}
+                  disableScroll={true}
+                  xAxisLabelsHeight={24}
+                  labelsExtraHeight={16}
+                  overflowBottom={24}
+                  xAxisLabelTextStyle={{ 
+                    color: '#5C6B89', 
+                    fontSize: 11, 
+                    width: 76, 
+                    textAlign: 'center', 
+                    marginLeft: -28,
+                    transform: [{ rotate: '0deg' }]
+                  }}
+                />
+              </ScrollView>
 
               {/* Fixed container permanently pinned on the RIGHT for the Y-axis (price labels) */}
               <View style={[styles.fixedYAxisContainer, { height: chartHeight }]}>
@@ -459,6 +458,12 @@ const styles = StyleSheet.create({
   scrollableChartArea: {
     flex: 1,
     minHeight: 0,
+    ...(Platform.OS === 'web' ? {
+      overflowX: 'auto',
+      overflowY: 'hidden',
+      cursor: 'grab',
+      userSelect: 'none',
+    } : {}),
   },
   fixedYAxisContainer: {
     width: 62,
