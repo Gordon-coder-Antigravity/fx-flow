@@ -12,7 +12,7 @@ import Tooltip from './Tooltip';
 const TIMEFRAMES: Timeframe[] = ['1D', '1W', '1M', '3M', '6M', '1Y', '5Y', '10Y'];
 
 const FLAGS: Record<string, string> = {
-  USD: '🇺🇸', EUR: '🇪🇺', TWD: '🇹🇼', JPY: '🇯🇵', CNY: '🇨🇳', 
+  USD: '🇺🇸', EUR: '🇪🇺', CAD: '🇨🇦', TWD: '🇹🇼', JPY: '🇯🇵', CNY: '🇨🇳', 
   MYR: '🇲🇾', GBP: '🇬🇧', AUD: '🇦🇺', PHP: '🇵🇭', TRY: '🇹🇷'
 };
 

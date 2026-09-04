@@ -1,6 +1,7 @@
 export const AVAILABLE_CURRENCIES = [
   { label: 'USD - US Dollar', value: 'USD', symbol: '$' },
   { label: 'EUR - Euro', value: 'EUR', symbol: '€' },
+  { label: 'CAD - Canadian Dollar', value: 'CAD', symbol: 'C$' },
   { label: 'TWD - Taiwan New Dollar', value: 'TWD', symbol: 'NT$' },
   { label: 'JPY - Japanese Yen', value: 'JPY', symbol: '¥' },
   { label: 'CNY - Chinese Yuan', value: 'CNY', symbol: '¥' },

@@ -424,6 +424,8 @@ const styles = StyleSheet.create({
   itemContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#1A253C',
@@ -445,14 +447,14 @@ const styles = StyleSheet.create({
   },
   moveButtons: {
     flexDirection: 'column',
-    marginRight: 10,
+    marginRight: 4,
     gap: 2,
   },
   moveBtn: {
     padding: 3,
   },
   infoContainer: {
-    flex: 1.4,
+    flex: 1,
     paddingRight: 8,
   },
   codeText: {
@@ -468,8 +470,9 @@ const styles = StyleSheet.create({
   rightContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 2.2,
     justifyContent: 'flex-end',
+    flex: 1,
+    gap: 8,
     position: 'relative',
     zIndex: 10,
   },
@@ -477,9 +480,9 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 24,
     fontWeight: '300',
-    marginRight: 8,
     textAlign: 'right',
-    flex: 1,
+    width: '50%',
+    maxWidth: '50%',
     paddingVertical: 4,
   },
   baseRateText: {
