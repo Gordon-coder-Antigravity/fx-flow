@@ -148,12 +148,11 @@ export default function HistoryChart() {
     }
   };
 
-  // Wide width so historical data on the X-axis is comfortably slidable (minimum 800px)
-  const targetWidth = Math.max(800, chartData.length * 48);
+  // Wide minimum width (800px) so data stretches out legibly for horizontal swiping
+  const chartContentWidth = Math.max(800, chartData.length * 48);
   const calculatedSpacing = chartData.length > 1
-    ? Math.max(36, Math.floor((targetWidth - 50) / (chartData.length - 1)))
+    ? Math.max(36, Math.floor((chartContentWidth - 126) / (chartData.length - 1)))
     : 40;
-  const totalChartWidth = 20 + (chartData.length - 1) * calculatedSpacing + 30;
 
   // Compute 5 fixed Y-axis labels matching the 4 grid line sections
   const yStep = maxYValue / 4;
@@ -242,7 +241,8 @@ export default function HistoryChart() {
       {/* .chart-wrapper: Dynamically fills remaining vertical space using Flexbox (flex: 1) with 16px gap */}
       <View style={styles.chartWrapper}>
         {/* .chart-container: flex: 1 and min-height: 0 so chart stretches to become taller */}
-        <View style={styles.chartContainer} onLayout={onChartContainerLayout}>
+        {/* .chart-container: dual-layer layout with absolute-positioned pinned Y-axis overlay */}
+        <View style={styles.chartDualLayerContainer} onLayout={onChartContainerLayout}>
           {loading ? (
             <View style={styles.loadingWrapper}>
               <ActivityIndicator color="#2962FF" size="large" />
@@ -252,11 +252,15 @@ export default function HistoryChart() {
               <Text style={{ color: '#8A99AF' }}>No data available for this pair.</Text>
             </View>
           ) : (
-            /* Split layout: Horizontally scrollable chart on left/center + Fixed Y-axis container permanently pinned on RIGHT */
-            <View style={styles.splitChartLayout}>
-              {/* Slidable chart area with native horizontal scrolling for line and X-axis dates */}
-              <View
-                style={styles.scrollableChartArea}
+            <>
+              {/* Layer 1 (Underneath): Horizontally scrollable wrapper with overflow-x: auto and scrollbar-width: none */}
+              <ScrollView
+                ref={horizontalScrollRef}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                bounces={true}
+                style={styles.chartScrollWrapper}
+                contentContainerStyle={{ width: chartContentWidth }}
                 {...(Platform.OS === 'web' ? {
                   onMouseDown: handleMouseDown,
                   onMouseMove: handleMouseMove,
@@ -264,65 +268,73 @@ export default function HistoryChart() {
                   onMouseLeave: handleMouseUp,
                 } : {})}
               >
-                <LineChart
-                  data={chartData}
-                  height={chartHeight}
-                  spacing={calculatedSpacing}
-                  initialSpacing={20}
-                  endSpacing={30}
-                  color="#2962FF"
-                  thickness={2.5}
-                  startFillColor="#2962FF"
-                  endFillColor="#2962FF"
-                  startOpacity={0.25}
-                  endOpacity={0.01}
-                  hideYAxisText={true}
-                  yAxisLabelWidth={0}
-                  yAxisThickness={0}
-                  yAxisColor="transparent"
-                  xAxisColor="transparent"
-                  rulesLength={totalChartWidth}
-                  yAxisOffset={yAxisOffset}
-                  maxValue={maxYValue}
-                  noOfSections={4}
-                  rulesColor="#1A253C"
-                  rulesType="dotted"
-                  hideDataPoints={false}
-                  maintainAspectRatio={false}
-                  scrollRef={horizontalScrollRef}
-                  scrollToEnd={true}
-                  scrollAnimation={false}
-                  showScrollIndicator={true}
-                  indicatorColor="white"
-                  xAxisLabelsHeight={24}
-                  labelsExtraHeight={16}
-                  overflowBottom={24}
-                  xAxisLabelTextStyle={{ 
-                    color: '#5C6B89', 
-                    fontSize: 11, 
-                    width: 76, 
-                    textAlign: 'center', 
-                    marginLeft: -28,
-                    transform: [{ rotate: '0deg' }]
-                  }}
-                />
-              </View>
+                {/* pointerEvents: none guarantees that no SVG/responder traps touch events */}
+                <View pointerEvents="none" style={{ width: chartContentWidth }}>
+                  <LineChart
+                    data={chartData}
+                    width={chartContentWidth}
+                    height={chartHeight}
+                    spacing={calculatedSpacing}
+                    initialSpacing={50}
+                    endSpacing={76}
+                    color="#2962FF"
+                    thickness={2.5}
+                    startFillColor="#2962FF"
+                    endFillColor="#2962FF"
+                    startOpacity={0.25}
+                    endOpacity={0.01}
+                    hideYAxisText={true}
+                    yAxisLabelWidth={0}
+                    yAxisThickness={0}
+                    yAxisColor="transparent"
+                    xAxisColor="transparent"
+                    rulesLength={chartContentWidth}
+                    yAxisOffset={yAxisOffset}
+                    maxValue={maxYValue}
+                    noOfSections={4}
+                    rulesColor="#1A253C"
+                    rulesType="dotted"
+                    hideDataPoints={false}
+                    maintainAspectRatio={false}
+                    disableScroll={true}
+                    xAxisLabelsHeight={24}
+                    labelsExtraHeight={16}
+                    overflowBottom={24}
+                    xAxisLabelTextStyle={{ 
+                      color: '#5C6B89', 
+                      fontSize: 11, 
+                      width: 80, 
+                      textAlign: 'center', 
+                      marginLeft: -40,
+                      transform: [{ rotate: '0deg' }]
+                    }}
+                  />
+                </View>
+              </ScrollView>
 
-              {/* Fixed container permanently pinned on the RIGHT for the Y-axis (price labels) */}
-              <View style={[styles.fixedYAxisContainer, { height: chartHeight }]}>
+              {/* Layer 2 (Top): Separate, absolute-positioned Y-axis overlay permanently pinned on the right */}
+              <View 
+                style={[styles.yAxisAbsoluteOverlay, { height: chartHeight }]} 
+                pointerEvents="none"
+              >
                 {yAxisLabels.map((val, idx) => (
                   <View key={idx} style={styles.yAxisLabelRow}>
                     <Text style={styles.fixedYAxisText}>{val}</Text>
                   </View>
                 ))}
               </View>
-            </View>
+            </>
           )}
         </View>
 
-        {/* Period Option Buttons row naturally pushed down to bottom */}
+        {/* Period Option Buttons row with overflow-x: auto and flex gap */}
         <View style={styles.timeframeWrapper}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.timeframeContainer}>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false} 
+            style={styles.timeframeScrollView}
+            contentContainerStyle={styles.timeframeContainer}
+          >
             {TIMEFRAMES.map((tf) => (
               <TouchableOpacity 
                 key={tf} 
@@ -433,11 +445,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     marginTop: 4,
   },
-  // .chart-container: flex: 1 and min-height: 0 so chart stretches to become taller
-  chartContainer: {
+  // .chart-container: dual-layer container with relative positioning
+  chartDualLayerContainer: {
     flex: 1,
     minHeight: 0,
     width: '100%',
+    position: 'relative',
     justifyContent: 'center',
     paddingBottom: 12,
   },
@@ -447,28 +460,35 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  // Split layout: Horizontally scrollable chart on left + Fixed Y-axis column permanently pinned on RIGHT
-  splitChartLayout: {
+  // Layer 1: Scrollable chart wrapper with overflow-x: auto and scrollbar-width: none
+  chartScrollWrapper: {
     flex: 1,
-    flexDirection: 'row',
     width: '100%',
     minHeight: 0,
-  },
-  scrollableChartArea: {
-    flex: 1,
-    minHeight: 0,
-    overflow: 'hidden',
     ...(Platform.OS === 'web' ? {
+      overflowX: 'auto',
+      overflowY: 'hidden',
+      scrollbarWidth: 'none',
+      msOverflowStyle: 'none',
+      WebkitOverflowScrolling: 'touch',
       cursor: 'grab',
       userSelect: 'none',
     } : {}),
   },
-  fixedYAxisContainer: {
-    width: 62,
+  // Layer 2: Absolute-positioned pinned Y-axis overlay permanently on top of the view on the right
+  yAxisAbsoluteOverlay: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    width: 66,
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     paddingLeft: 8,
-    zIndex: 10,
+    paddingRight: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    borderLeftWidth: 1,
+    borderLeftColor: '#1A253C',
+    zIndex: 30,
   },
   yAxisLabelRow: {
     height: 16,
@@ -481,13 +501,25 @@ const styles = StyleSheet.create({
   },
   timeframeWrapper: {
     height: 48,
+    width: '100%',
     justifyContent: 'center',
     marginBottom: 4,
+  },
+  timeframeScrollView: {
+    width: '100%',
+    ...(Platform.OS === 'web' ? {
+      overflowX: 'auto',
+      overflowY: 'hidden',
+      scrollbarWidth: 'none',
+      msOverflowStyle: 'none',
+      WebkitOverflowScrolling: 'touch',
+    } : {}),
   },
   timeframeContainer: {
     paddingHorizontal: 16,
     flexDirection: 'row',
     gap: 10,
+    alignItems: 'center',
   },
   tfButton: {
     width: 44,
