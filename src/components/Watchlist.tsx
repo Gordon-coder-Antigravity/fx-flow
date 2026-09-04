@@ -127,16 +127,25 @@ export default function Watchlist() {
     return parts.join('.');
   };
 
-  const handleFocus = (code: string) => {
+  // onFocus: highlight the entire number with select() for instant overwrite
+  const handleFocus = (code: string, e?: any) => {
     setEditingCurrency(code);
     const rateBase = rates[calcBaseCurrency] || 1;
     const rateTarget = rates[code] || 1;
     const currentVal = (calcAmount / rateBase) * rateTarget;
     setEditingValue(currentVal.toFixed(4));
+
+    // Call e.target.select() immediately and with a slight timeout for iOS/mobile compatibility
+    if (e?.target?.select) {
+      e.target.select();
+    }
+    setTimeout(() => {
+      try {
+        e?.target?.select?.();
+      } catch (_) {}
+    }, 50);
   };
 
-  // Rule 2: When input is empty string, allow it to be empty but do NOT update global calculation state.
-  // Only recalculate other fields when a valid number is typed.
   const handleChangeAmount = (code: string, text: string) => {
     setEditingCurrency(code);
 
@@ -156,14 +165,11 @@ export default function Watchlist() {
         setCalcAmount(num);
       }
     }
-    // When clean === '', do not update calcBaseCurrency or calcAmount!
-    // All other currency fields retain their last calculated values.
   };
 
   const handleBlurFormat = (code: string) => {
     if (editingCurrency === code) {
       if (editingValue === '') {
-        // If left empty, revert to its calculated rate from the global state
         setEditingCurrency(null);
         setEditingValue('');
       } else {
@@ -179,7 +185,6 @@ export default function Watchlist() {
   };
 
   const calculateAmount = (code: string): string => {
-    // If this field is currently being edited, display its current editing value
     if (editingCurrency === code) {
       if (editingValue === '') return '';
       const parts = editingValue.split('.');
@@ -187,7 +192,6 @@ export default function Watchlist() {
       return parts.join('.');
     }
 
-    // For all other fields, calculate from calcBaseCurrency and calcAmount
     const rateBase = rates[calcBaseCurrency] || 1;
     const rateTarget = rates[code] || 1;
     const result = (calcAmount / rateBase) * rateTarget;
@@ -230,7 +234,7 @@ export default function Watchlist() {
 
         <TouchableOpacity 
           style={styles.infoContainer} 
-          onPress={() => handleFocus(item.code)}
+          onPress={(e) => handleFocus(item.code, e)}
           activeOpacity={0.8}
         >
           <Text style={styles.codeText}>{item.code}</Text>
@@ -241,11 +245,12 @@ export default function Watchlist() {
           <TextInput
             style={[styles.rateInput, isBase && styles.baseRateText]}
             value={amount}
-            onFocus={() => handleFocus(item.code)}
+            onFocus={(e) => handleFocus(item.code, e)}
             onChangeText={(text) => handleChangeAmount(item.code, text)}
             onBlur={() => handleBlurFormat(item.code)}
             keyboardType="numeric"
             returnKeyType="done"
+            selectTextOnFocus={true}
             editable={true}
           />
           <TouchableOpacity onPress={() => handleRemove(item.id)} style={styles.removeButton}>
@@ -269,7 +274,7 @@ export default function Watchlist() {
         amount={calculateAmount(item.code)}
         onChangeAmount={handleChangeAmount}
         onBlurFormat={() => handleBlurFormat(item.code)}
-        onFocus={() => handleFocus(item.code)}
+        onFocus={(e: any) => handleFocus(item.code, e)}
       />
     );
   };
@@ -305,7 +310,7 @@ export default function Watchlist() {
           activeColor="#1A253C"
         />
         <TouchableOpacity style={styles.addButton} onPress={handleAdd}>
-          <Text style={styles.addButtonText}>+ 新增</Text>
+          <Text style={styles.addButtonText}>+ Add</Text>
         </TouchableOpacity>
       </View>
 

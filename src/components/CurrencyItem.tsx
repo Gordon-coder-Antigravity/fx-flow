@@ -26,7 +26,7 @@ type Props = {
   amount: string;
   onChangeAmount: (code: string, amount: string) => void;
   onBlurFormat: () => void;
-  onFocus?: () => void;
+  onFocus?: (e?: any) => void;
 };
 
 export default function CurrencyItem({ 
@@ -73,6 +73,18 @@ export default function CurrencyItem({
     };
   });
 
+  const handleInputFocus = (e: any) => {
+    onFocus?.(e);
+    if (e?.target?.select) {
+      e.target.select();
+    }
+    setTimeout(() => {
+      try {
+        e?.target?.select?.();
+      } catch (_) {}
+    }, 50);
+  };
+
   return (
     <ScaleDecorator>
       <Animated.View style={[styles.container, animatedStyle]}>
@@ -84,7 +96,7 @@ export default function CurrencyItem({
 
         <TouchableOpacity 
           style={styles.infoContainer} 
-          onPress={onFocus}
+          onPress={handleInputFocus}
           activeOpacity={0.8}
         >
           <Text style={styles.codeText}>{item.code}</Text>
@@ -95,11 +107,12 @@ export default function CurrencyItem({
           <TextInput
             style={[styles.rateInput, isBase && styles.baseRateText]}
             value={amount}
-            onFocus={onFocus}
+            onFocus={handleInputFocus}
             onChangeText={(text) => onChangeAmount(item.code, text)}
             onBlur={onBlurFormat}
             keyboardType="numeric"
             returnKeyType="done"
+            selectTextOnFocus={true}
             editable={true}
           />
           <TouchableOpacity onPress={() => onRemove(item.id)} style={styles.removeButton}>

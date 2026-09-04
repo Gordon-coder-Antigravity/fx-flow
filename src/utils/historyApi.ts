@@ -8,6 +8,8 @@ export type ChartDataPoint = {
   date: string;
 };
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
 function generateDates(startDate: Date, endDate: Date, maxPoints: number): string[] {
   const dates: string[] = [];
   const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
@@ -19,18 +21,22 @@ function generateDates(startDate: Date, endDate: Date, maxPoints: number): strin
   return dates;
 }
 
-// Format date into Traditional Chinese labels
-function formatChineseLabel(date: Date, timeframe: Timeframe): string {
-  const year = date.getFullYear();
-  const month = date.getMonth() + 1;
+// Format date into exclusively English labels (en-US)
+function formatEnglishLabel(date: Date, timeframe: Timeframe): string {
+  const month = MONTHS[date.getMonth()];
   const day = date.getDate();
+  const year = date.getFullYear();
 
-  if (['1D', '1W', '1M', '3M'].includes(timeframe)) {
-    return `${month}月${day}日`;
+  if (timeframe === '1D') {
+    const hours = date.getHours();
+    const mins = date.getMinutes();
+    return `${hours}:${mins < 10 ? '0' : ''}${mins}`;
+  } else if (['1W', '1M', '3M'].includes(timeframe)) {
+    return `${month} ${day}`;
   } else if (['6M', '1Y'].includes(timeframe)) {
-    return `${year}年${month}月`;
+    return `${month} '${String(year).slice(-2)}`;
   } else {
-    return `${year}年`;
+    return `${year}`;
   }
 }
 
@@ -110,17 +116,17 @@ const fetchWebHistory = async (baseCode: string, targetCode: string, timeframe: 
 
     if (unique.length === 0) return [];
 
-    // Limit to at most 4 widely spaced Traditional Chinese ticks
+    // Limit to at most 4 widely spaced English ticks
     const tickIndices = getTickIndices(unique.length, 4);
 
     const dataPoints: ChartDataPoint[] = unique.map((r, index) => {
       const d = new Date(r.dateStr + 'T00:00:00');
-      const label = tickIndices.has(index) ? formatChineseLabel(d, timeframe) : '';
+      const label = tickIndices.has(index) ? formatEnglishLabel(d, timeframe) : '';
 
       return {
         value: parseFloat(r.rate.toFixed(4)),
         label,
-        date: `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`,
+        date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
       };
     });
 
@@ -180,7 +186,7 @@ const fetchNativeHistory = async (baseCode: string, targetCode: string, timefram
       return closeArr[idx] || (idx > 0 ? closeArr[idx - 1] : 1);
     };
 
-    // Limit to at most 4 widely spaced Traditional Chinese ticks
+    // Limit to at most 4 widely spaced English ticks
     const tickIndices = getTickIndices(total, 4);
     const dataPoints: ChartDataPoint[] = [];
 
@@ -191,12 +197,18 @@ const fetchNativeHistory = async (baseCode: string, targetCode: string, timefram
 
       const rate = targetVal / baseVal;
       const date = new Date(timestamps[i] * 1000);
-      const label = tickIndices.has(i) ? formatChineseLabel(date, timeframe) : '';
+      const label = tickIndices.has(i) ? formatEnglishLabel(date, timeframe) : '';
 
       dataPoints.push({
         value: parseFloat(rate.toFixed(4)),
         label,
-        date: `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`,
+        date: date.toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          hour: timeframe === '1D' ? '2-digit' : undefined,
+          minute: timeframe === '1D' ? '2-digit' : undefined,
+        }),
       });
     }
 
