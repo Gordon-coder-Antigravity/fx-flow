@@ -27,6 +27,8 @@ export default function Watchlist() {
   const [watchlist, setWatchlist] = useState<CurrencyData[]>([]);
   const [rates, setRates] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<string>('');
   const [selectedCurrency, setSelectedCurrency] = useState('EUR');
 
   // Global calculation state
@@ -75,7 +77,11 @@ export default function Watchlist() {
     setEditingValue('');
 
     const data = await fetchRates(API_BASE_CURRENCY);
-    if (data) setRates(data);
+    if (data) {
+      setRates(data);
+      const now = new Date();
+      setLastUpdated(now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
+    }
 
     setLoading(false);
   };
@@ -100,10 +106,23 @@ export default function Watchlist() {
   }, [watchlist, loading]);
 
   const handleRefresh = async () => {
-    setLoading(true);
-    const data = await fetchRates(API_BASE_CURRENCY);
-    if (data) setRates(data);
-    setLoading(false);
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      const [data] = await Promise.all([
+        fetchRates(API_BASE_CURRENCY, true),
+        new Promise(resolve => setTimeout(resolve, 600)),
+      ]);
+      if (data) {
+        setRates(data);
+        const now = new Date();
+        setLastUpdated(now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+      }
+    } catch (e) {
+      console.error('Refresh error:', e);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const handleAdd = () => {
@@ -496,11 +515,18 @@ export default function Watchlist() {
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>FX FLOW</Text>
-          <Text style={styles.subtitle}>LIVE EXCHANGE RATES</Text>
+          <Text style={styles.subtitle}>
+            {lastUpdated ? `LIVE RATES · UPDATED ${lastUpdated.toUpperCase()}` : 'LIVE EXCHANGE RATES'}
+          </Text>
         </View>
-        <TouchableOpacity onPress={handleRefresh} style={styles.refreshButton} disabled={loading}>
-          {loading ? (
-            <ActivityIndicator color="#8A99AF" size="small" />
+        <TouchableOpacity 
+          onPress={handleRefresh} 
+          style={[styles.refreshButton, refreshing && styles.refreshButtonActive]} 
+          disabled={refreshing}
+          activeOpacity={0.7}
+        >
+          {refreshing ? (
+            <ActivityIndicator color="#00B4D8" size="small" />
           ) : (
             <Ionicons name="sync" size={20} color="#8A99AF" />
           )}
@@ -654,6 +680,9 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 20,
     backgroundColor: '#14203B',
+  },
+  refreshButtonActive: {
+    backgroundColor: '#1C2E54',
   },
   addSection: {
     flexDirection: 'row',
