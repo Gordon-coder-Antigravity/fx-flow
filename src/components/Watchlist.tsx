@@ -28,8 +28,14 @@ export default function Watchlist() {
   const [rates, setRates] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [selectedCurrency, setSelectedCurrency] = useState('EUR');
-  const [baseCurrency, setBaseCurrency] = useState('USD');
-  const [baseAmount, setBaseAmount] = useState('1.0000');
+
+  // Global calculation state
+  const [calcBaseCurrency, setCalcBaseCurrency] = useState('USD');
+  const [calcAmount, setCalcAmount] = useState(1);
+
+  // Active input editing state
+  const [editingCurrency, setEditingCurrency] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState('');
 
   const loadRates = async () => {
     setLoading(true);
@@ -41,13 +47,7 @@ export default function Watchlist() {
         const parsed = JSON.parse(storedWatchlist);
         if (Array.isArray(parsed) && parsed.length > 0) savedCodes = parsed;
       }
-      const storedBase = await AsyncStorage.getItem('saved_baseCurrency');
-      if (storedBase) setBaseCurrency(storedBase);
-      const storedAmount = await AsyncStorage.getItem('saved_baseAmount');
-      if (storedAmount) {
-        const num = parseFloat(storedAmount);
-        setBaseAmount(!isNaN(num) ? num.toFixed(4) : '1.0000');
-      }
+      // Rule 1: Do NOT load previous amounts or base currency from local storage.
     } catch (e) {
       // default fallback
     }
@@ -57,6 +57,13 @@ export default function Watchlist() {
       return { id: code, code, name: info.label.split(' - ')[1] || code, symbol: (info as any).symbol || '' };
     });
     setWatchlist(initialData);
+
+    // Rule 1: Always set default base amount to 1 for the top currency on initialization
+    const topCurrency = savedCodes[0] || 'USD';
+    setCalcBaseCurrency(topCurrency);
+    setCalcAmount(1);
+    setEditingCurrency(null);
+    setEditingValue('');
 
     const data = await fetchRates(API_BASE_CURRENCY);
     if (data) setRates(data);
@@ -68,21 +75,20 @@ export default function Watchlist() {
     loadRates();
   }, []);
 
+  // Persist only the watchlist order, never previous amounts
   useEffect(() => {
     const saveState = async () => {
       if (!loading && watchlist.length > 0) {
         try {
           const codes = watchlist.map(item => item.code);
           await AsyncStorage.setItem('saved_watchlist', JSON.stringify(codes));
-          await AsyncStorage.setItem('saved_baseCurrency', baseCurrency);
-          await AsyncStorage.setItem('saved_baseAmount', baseAmount);
         } catch (e) {
           console.error('Failed to save state', e);
         }
       }
     };
     saveState();
-  }, [watchlist, baseCurrency, baseAmount, loading]);
+  }, [watchlist, loading]);
 
   const handleRefresh = async () => {
     setLoading(true);
@@ -106,7 +112,12 @@ export default function Watchlist() {
   };
 
   const handleRemove = (id: string) => {
-    setWatchlist(watchlist.filter(item => item.id !== id));
+    const updated = watchlist.filter(item => item.id !== id);
+    setWatchlist(updated);
+    if (calcBaseCurrency === id && updated.length > 0) {
+      setCalcBaseCurrency(updated[0].code);
+      setCalcAmount(1);
+    }
   };
 
   const formatThousands = (val: string) => {
@@ -116,56 +127,70 @@ export default function Watchlist() {
     return parts.join('.');
   };
 
-  const calculateRawAmount = (targetCode: string): string => {
-    if (targetCode === baseCurrency) return baseAmount;
-    if (baseAmount === '') return '';
-    const amountNum = parseFloat(baseAmount);
-    if (isNaN(amountNum)) return '1.0000';
-    const rateBase = rates[baseCurrency] || 1;
-    const rateTarget = rates[targetCode] || 1;
-    const result = (amountNum / rateBase) * rateTarget;
-    return result.toFixed(4);
-  };
-
   const handleFocus = (code: string) => {
-    if (code !== baseCurrency) {
-      const currentVal = calculateRawAmount(code);
-      setBaseCurrency(code);
-      setBaseAmount(currentVal);
-    }
+    setEditingCurrency(code);
+    const rateBase = rates[calcBaseCurrency] || 1;
+    const rateTarget = rates[code] || 1;
+    const currentVal = (calcAmount / rateBase) * rateTarget;
+    setEditingValue(currentVal.toFixed(4));
   };
 
+  // Rule 2: When input is empty string, allow it to be empty but do NOT update global calculation state.
+  // Only recalculate other fields when a valid number is typed.
   const handleChangeAmount = (code: string, text: string) => {
-    setBaseCurrency(code);
-    // Allow digits and a single decimal point, strip commas
+    setEditingCurrency(code);
+
+    // Strip commas and any non-numeric / non-dot characters
     let clean = text.replace(/,/g, '').replace(/[^0-9.]/g, '');
     const parts = clean.split('.');
     if (parts.length > 2) {
       clean = parts[0] + '.' + parts.slice(1).join('');
     }
-    setBaseAmount(clean);
+    setEditingValue(clean);
+
+    if (clean !== '') {
+      const num = parseFloat(clean);
+      if (!isNaN(num)) {
+        // Valid number: recalculate global calculation state
+        setCalcBaseCurrency(code);
+        setCalcAmount(num);
+      }
+    }
+    // When clean === '', do not update calcBaseCurrency or calcAmount!
+    // All other currency fields retain their last calculated values.
   };
 
-  const handleBlurFormat = () => {
-    if (baseAmount === '') return;
-    const amountNum = parseFloat(baseAmount);
-    if (!isNaN(amountNum)) {
-      setBaseAmount(amountNum.toFixed(4));
+  const handleBlurFormat = (code: string) => {
+    if (editingCurrency === code) {
+      if (editingValue === '') {
+        // If left empty, revert to its calculated rate from the global state
+        setEditingCurrency(null);
+        setEditingValue('');
+      } else {
+        const num = parseFloat(editingValue);
+        if (!isNaN(num)) {
+          setCalcAmount(num);
+          setCalcBaseCurrency(code);
+        }
+        setEditingCurrency(null);
+        setEditingValue('');
+      }
     }
   };
 
-  const calculateAmount = (targetCode: string): string => {
-    if (targetCode === baseCurrency) {
-      if (baseAmount === '') return '';
-      return formatThousands(baseAmount);
+  const calculateAmount = (code: string): string => {
+    // If this field is currently being edited, display its current editing value
+    if (editingCurrency === code) {
+      if (editingValue === '') return '';
+      const parts = editingValue.split('.');
+      parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      return parts.join('.');
     }
-    if (baseAmount === '') return '';
-    const amountNum = parseFloat(baseAmount);
-    if (isNaN(amountNum)) return '0.0000';
 
-    const rateBase = rates[baseCurrency] || 1;
-    const rateTarget = rates[targetCode] || 1;
-    const result = (amountNum / rateBase) * rateTarget;
+    // For all other fields, calculate from calcBaseCurrency and calcAmount
+    const rateBase = rates[calcBaseCurrency] || 1;
+    const rateTarget = rates[code] || 1;
+    const result = (calcAmount / rateBase) * rateTarget;
     return formatThousands(result.toFixed(4));
   };
 
@@ -179,7 +204,7 @@ export default function Watchlist() {
 
   // ---- Web Item Renderer ----
   const renderWebItem = ({ item, index }: { item: CurrencyData; index: number }) => {
-    const isBase = item.code === baseCurrency;
+    const isBase = (editingCurrency || calcBaseCurrency) === item.code;
     const amount = calculateAmount(item.code);
     return (
       <View style={[styles.itemContainer, isBase && styles.itemContainerBase]}>
@@ -218,7 +243,7 @@ export default function Watchlist() {
             value={amount}
             onFocus={() => handleFocus(item.code)}
             onChangeText={(text) => handleChangeAmount(item.code, text)}
-            onBlur={handleBlurFormat}
+            onBlur={() => handleBlurFormat(item.code)}
             keyboardType="numeric"
             returnKeyType="done"
             editable={true}
@@ -240,10 +265,10 @@ export default function Watchlist() {
         drag={drag}
         isActive={isActive}
         onRemove={handleRemove}
-        isBase={item.code === baseCurrency}
+        isBase={(editingCurrency || calcBaseCurrency) === item.code}
         amount={calculateAmount(item.code)}
         onChangeAmount={handleChangeAmount}
-        onBlurFormat={handleBlurFormat}
+        onBlurFormat={() => handleBlurFormat(item.code)}
         onFocus={() => handleFocus(item.code)}
       />
     );
