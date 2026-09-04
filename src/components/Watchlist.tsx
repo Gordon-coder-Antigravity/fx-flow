@@ -49,6 +49,7 @@ export default function Watchlist() {
   const startYRef = useRef<number>(0);
   const watchlistRef = useRef<CurrencyData[]>([]);
   watchlistRef.current = watchlist;
+  const listRef = useRef<any>(null);
 
   const loadRates = async () => {
     setLoading(true);
@@ -169,13 +170,44 @@ export default function Watchlist() {
 
   const isInitialInputRef = useRef<boolean>(true);
 
-  const handleFocus = (code: string, e?: any) => {
+  const handleFocus = (code: string, index?: number, e?: any) => {
     setEditingCurrency(code);
     isInitialInputRef.current = true;
     const rateBase = rates[calcBaseCurrency] || 1;
     const rateTarget = rates[code] || 1;
     const currentVal = (calcAmount / rateBase) * rateTarget;
     setEditingValue(currentVal.toFixed(4));
+
+    // Scroll the tapped item's input box into view above the keyboard
+    if (typeof index === 'number') {
+      setTimeout(() => {
+        try {
+          listRef.current?.scrollToIndex({
+            index,
+            viewPosition: 0.2, // Positions item comfortably in the upper half above the keyboard
+            animated: true,
+          });
+        } catch (_) {
+          try {
+            listRef.current?.scrollToOffset({
+              offset: Math.max(0, index * 68 - 40),
+              animated: true,
+            });
+          } catch (__) {}
+        }
+      }, 50);
+    }
+
+    if (Platform.OS === 'web') {
+      const el = e?.currentTarget || e?.target;
+      if (el?.scrollIntoView) {
+        setTimeout(() => {
+          try {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          } catch (_) {}
+        }, 60);
+      }
+    }
 
     if (e?.target?.select) {
       e.target.select();
@@ -477,7 +509,7 @@ export default function Watchlist() {
 
         <TouchableOpacity 
           style={styles.infoContainer} 
-          onPress={(e) => handleFocus(item.code, e)}
+          onPress={(e) => handleFocus(item.code, index, e)}
           activeOpacity={0.8}
         >
           <Text style={styles.codeText}>{item.code}</Text>
@@ -488,7 +520,7 @@ export default function Watchlist() {
         <View style={styles.rightContainer}>
           <TouchableOpacity 
             style={[styles.rateDisplayBtn, editingCurrency === item.code && styles.rateDisplayBtnActive]}
-            onPress={() => handleFocus(item.code)}
+            onPress={(e) => handleFocus(item.code, index, e)}
             activeOpacity={0.7}
           >
             <Text
@@ -519,8 +551,9 @@ export default function Watchlist() {
   };
 
   // Native Item Renderer
-  const renderNativeItem = ({ item, drag, isActive }: any) => {
+  const renderNativeItem = ({ item, getIndex, drag, isActive }: any) => {
     const CurrencyItemComponent = require('./CurrencyItem').default;
+    const index = getIndex ? getIndex() : 0;
     return (
       <CurrencyItemComponent
         item={item}
@@ -531,7 +564,7 @@ export default function Watchlist() {
         amount={calculateAmount(item.code)}
         onChangeAmount={handleChangeAmount}
         onBlurFormat={() => handleBlurFormat(item.code)}
-        onFocus={(e: any) => handleFocus(item.code, e)}
+        onFocus={(e: any) => handleFocus(item.code, index, e)}
       />
     );
   };
@@ -654,15 +687,27 @@ export default function Watchlist() {
         </View>
       ) : Platform.OS === 'web' || !DraggableFlatList ? (
         <FlatList
+          ref={listRef}
           data={watchlist}
           keyExtractor={(item) => item.id}
           renderItem={renderWebItem}
           style={styles.listContainer}
           contentContainerStyle={styles.listContentContainer}
           keyboardShouldPersistTaps="always"
+          getItemLayout={(data, index) => ({
+            length: 68,
+            offset: 68 * index,
+            index,
+          })}
+          onScrollToIndexFailed={(info) => {
+            setTimeout(() => {
+              listRef.current?.scrollToIndex({ index: info.index, viewPosition: 0.2, animated: true });
+            }, 60);
+          }}
         />
       ) : (
         <DraggableFlatList
+          ref={listRef}
           data={watchlist}
           onDragEnd={({ data }: any) => setWatchlist(data)}
           keyExtractor={(item: CurrencyData) => item.id}
