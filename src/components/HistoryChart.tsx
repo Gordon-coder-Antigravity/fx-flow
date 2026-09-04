@@ -76,21 +76,17 @@ export default function HistoryChart() {
           height,
           layout: {
             background: { type: 'solid', color: 'transparent' },
-            textColor: '#ffffff',
+            textColor: '#A0A8B6',
           },
           grid: {
-            vertLines: { visible: false },
-            horzLines: { visible: false },
+            vertLines: { color: '#2B2B43', style: 1 }, // 1 = Dotted
+            horzLines: { color: '#2B2B43', style: 1 },
           },
           rightPriceScale: {
-            visible: true,
             borderVisible: false,
-            textColor: '#ffffff',
           },
           timeScale: {
             borderVisible: false,
-            fixLeftEdge: true,
-            fixRightEdge: true,
           },
           localization: {
             locale: 'en-US',
@@ -102,12 +98,10 @@ export default function HistoryChart() {
         chartRef.current = chart;
 
         const lineSeries = chart.addAreaSeries({
-          color: '#ffffff',
-          lineColor: '#ffffff',
-          topColor: 'rgba(255, 255, 255, 0.35)',
-          bottomColor: 'rgba(255, 255, 255, 0.0)',
+          lineColor: '#2962FF',
+          topColor: 'rgba(41, 98, 255, 0.28)',
+          bottomColor: 'rgba(41, 98, 255, 0)',
           lineWidth: 2,
-          priceLineColor: '#ffffff',
         });
         seriesRef.current = lineSeries;
 
@@ -150,51 +144,61 @@ export default function HistoryChart() {
 
   const applyDataToSeries = (data: ChartDataPoint[], series: any, chartInst: any) => {
     try {
-      console.log(`[Data Verification] Total received data points: ${data?.length || 0}`);
       if (!data || data.length === 0) {
-        console.warn('[Data Verification] Warning: chart data array is empty!');
+        console.warn('Warning: chart data array is empty!');
         return;
       }
 
-      // Map to strict { time, value } format and sanitize
-      const formattedData = data.map(d => {
-        let timeVal: any = d.timestamp;
-        if (d.dateStr && /^\d{4}-\d{2}-\d{2}$/.test(d.dateStr) && timeframe !== '1D') {
-          timeVal = d.dateStr;
-        } else if (typeof d.timestamp === 'number' && !isNaN(d.timestamp) && d.timestamp > 0) {
-          timeVal = Math.floor(d.timestamp);
+      const isIntraday = timeframe === '1D';
+
+      // 1. Map historical data to ensure every object has strictly { time, value }
+      const rawMapped = data.map(d => {
+        let timeVal: string | number = '';
+        if (isIntraday) {
+          timeVal = typeof d.timestamp === 'number' && !isNaN(d.timestamp) && d.timestamp > 0 
+            ? Math.floor(d.timestamp) 
+            : 0;
+        } else {
+          // For daily/weekly/monthly, use YYYY-MM-DD string
+          if (d.dateStr && /^\d{4}-\d{2}-\d{2}$/.test(d.dateStr)) {
+            timeVal = d.dateStr;
+          } else if (d.timestamp) {
+            timeVal = new Date(d.timestamp * 1000).toISOString().split('T')[0];
+          }
         }
 
         return {
           time: timeVal,
-          value: typeof d.value === 'number' && !isNaN(d.value) ? d.value : 0,
+          value: Number(d.value) || 0,
         };
       }).filter(d => Boolean(d.time) && d.value > 0);
 
-      // Ensure strict chronological order and unique timestamps
-      const uniqueData: any[] = [];
-      const seen = new Set();
-      for (const d of formattedData) {
-        const key = String(d.time);
-        if (!seen.has(key)) {
-          seen.add(key);
-          uniqueData.push(d);
-        }
+      // 2. Filter out duplicate dates
+      const uniqueMap = new Map<string | number, number>();
+      for (const item of rawMapped) {
+        uniqueMap.set(item.time, item.value);
       }
 
-      uniqueData.sort((a, b) => {
+      const formattedData: { time: string | number; value: number }[] = [];
+      for (const [time, value] of uniqueMap.entries()) {
+        formattedData.push({ time, value });
+      }
+
+      // 3. Sort chronologically from oldest to newest
+      formattedData.sort((a, b) => {
         if (typeof a.time === 'string' && typeof b.time === 'string') {
           return a.time.localeCompare(b.time);
         }
         return Number(a.time) - Number(b.time);
       });
 
-      console.log(`[Data Verification] Passing ${uniqueData.length} verified points to series.setData(). First:`, uniqueData[0], 'Last:', uniqueData[uniqueData.length - 1]);
+      // 4. Verify right before setData
+      console.log(formattedData);
 
-      series.setData(uniqueData);
+      series.setData(formattedData);
       chartInst.timeScale().fitContent();
     } catch (e) {
-      console.error('[Data Verification] Error setting series data:', e);
+      console.error('Lightweight charts data formatting error:', e);
     }
   };
 
@@ -210,23 +214,26 @@ export default function HistoryChart() {
           .tv-chart-container {
             touch-action: none !important;
           }
-          /* Force pure white text on all currency dropdown selectors and expanded menu items */
-          .dropdown-pill,
-          .dropdown-pill *,
-          [class*="dropdown"],
-          [class*="Dropdown"],
-          [class*="dropdown"] *,
-          [class*="Dropdown"] *,
-          div[role="combobox"],
-          div[role="combobox"] *,
+          /* Dropdown menu width and single-line nowrap fix */
+          .dropdown-popup,
           div[role="listbox"],
-          div[role="listbox"] *,
-          input {
-            color: #ffffff !important;
-          }
-          div[role="listbox"] {
+          div[role="combobox"] + div,
+          [class*="dropdownPopup"],
+          [class*="dropdown-popup"] {
+            min-width: 220px !important;
+            width: max-content !important;
+            white-space: nowrap !important;
             background-color: #1C1C1E !important;
-            border: 1px solid #2C2C2E !important;
+            border: 1px solid #2B2B43 !important;
+          }
+          .dropdown-item-text,
+          div[role="listbox"] *,
+          div[role="listbox"] span,
+          div[role="listbox"] div,
+          div[role="combobox"],
+          div[role="combobox"] * {
+            white-space: nowrap !important;
+            color: #ffffff !important;
           }
         `}</style>
       )}
@@ -245,9 +252,9 @@ export default function HistoryChart() {
             placeholderStyle={styles.dropdownText}
             selectedTextStyle={styles.dropdownText}
             itemTextStyle={styles.dropdownItemText}
-            itemContainerStyle={{ backgroundColor: '#1C1C1E' }}
+            itemContainerStyle={{ backgroundColor: '#1C1C1E', minWidth: 220 }}
             containerStyle={styles.dropdownPopup}
-            activeColor="#2C2C2E"
+            activeColor="#2B2B43"
             iconColor="#FFFFFF"
             showsVerticalScrollIndicator={false}
             renderItem={(item) => (
@@ -276,9 +283,9 @@ export default function HistoryChart() {
             placeholderStyle={styles.dropdownText}
             selectedTextStyle={styles.dropdownText}
             itemTextStyle={styles.dropdownItemText}
-            itemContainerStyle={{ backgroundColor: '#1C1C1E' }}
+            itemContainerStyle={{ backgroundColor: '#1C1C1E', minWidth: 220 }}
             containerStyle={styles.dropdownPopup}
-            activeColor="#2C2C2E"
+            activeColor="#2B2B43"
             iconColor="#FFFFFF"
             showsVerticalScrollIndicator={false}
             renderItem={(item) => (
@@ -393,17 +400,23 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '500',
+    ...(Platform.OS === 'web' ? { whiteSpace: 'nowrap' } as any : {}),
   },
   dropdownItemRow: {
     paddingVertical: 10,
     paddingHorizontal: 12,
     backgroundColor: '#1C1C1E',
+    minWidth: 220,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   dropdownPopup: {
     backgroundColor: '#1C1C1E',
     borderWidth: 1,
-    borderColor: '#2C2C2E',
+    borderColor: '#2B2B43',
     borderRadius: 12,
+    minWidth: 220,
+    width: 220,
   },
   swapButton: {
     padding: 8,

@@ -406,10 +406,12 @@ const styles = StyleSheet.create({
   },
   dropdownItemText: {
     color: '#FFFFFF',
+    ...(Platform.OS === 'web' ? { whiteSpace: 'nowrap' } as any : {}),
   },
   dropdownContainer: {
     backgroundColor: '#14203B',
     borderWidth: 0,
+    minWidth: 220,
   },
   addButton: {
     backgroundColor: '#00B4D8',
