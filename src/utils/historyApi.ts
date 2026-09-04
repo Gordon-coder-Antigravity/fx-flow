@@ -116,8 +116,9 @@ const fetchWebHistory = async (baseCode: string, targetCode: string, timeframe: 
 
     if (unique.length === 0) return [];
 
-    // Limit to at most 4 widely spaced English ticks
-    const tickIndices = getTickIndices(unique.length, 4);
+    // Distribute date labels evenly across the wide slidable X-axis
+    const tickCount = Math.min(8, Math.max(4, Math.floor(unique.length / 3)));
+    const tickIndices = getTickIndices(unique.length, tickCount);
 
     const dataPoints: ChartDataPoint[] = unique.map((r, index) => {
       const d = new Date(r.dateStr + 'T00:00:00');
@@ -186,8 +187,9 @@ const fetchNativeHistory = async (baseCode: string, targetCode: string, timefram
       return closeArr[idx] || (idx > 0 ? closeArr[idx - 1] : 1);
     };
 
-    // Limit to at most 4 widely spaced English ticks
-    const tickIndices = getTickIndices(total, 4);
+    // Distribute date labels evenly across the wide slidable X-axis
+    const tickCount = Math.min(8, Math.max(4, Math.floor(total / 3)));
+    const tickIndices = getTickIndices(total, tickCount);
     const dataPoints: ChartDataPoint[] = [];
 
     for (let i = 0; i < total; i++) {

@@ -142,17 +142,18 @@ export default function HistoryChart() {
   const onChartContainerLayout = (e: LayoutChangeEvent) => {
     const { height } = e.nativeEvent.layout;
     if (height > 0) {
-      // Reserve ~40px for X-axis labels and bottom padding
-      const dynamicHeight = Math.max(160, Math.floor(height - 40));
+      // Reserve ~50px for X-axis labels and bottom padding
+      const dynamicHeight = Math.max(160, Math.floor(height - 50));
       setChartHeight(dynamicHeight);
     }
   };
 
-  // Wide minimum width (800px) so line stretches out comfortably for mobile swiping / sliding
-  const chartContentWidth = Math.max(800, chartData.length * 36);
+  // Wide width so historical data on the X-axis is comfortably slidable (minimum 800px)
+  const targetWidth = Math.max(800, chartData.length * 48);
   const calculatedSpacing = chartData.length > 1
-    ? Math.floor((chartContentWidth - 40) / (chartData.length - 1))
+    ? Math.max(36, Math.floor((targetWidth - 50) / (chartData.length - 1)))
     : 40;
+  const totalChartWidth = 20 + (chartData.length - 1) * calculatedSpacing + 30;
 
   // Compute 5 fixed Y-axis labels matching the 4 grid line sections
   const yStep = maxYValue / 4;
@@ -253,14 +254,9 @@ export default function HistoryChart() {
           ) : (
             /* Split layout: Horizontally scrollable chart on left/center + Fixed Y-axis container permanently pinned on RIGHT */
             <View style={styles.splitChartLayout}>
-              {/* Overflow-x container for the chart line and X-axis (min-width: 800px) */}
-              <ScrollView
-                ref={horizontalScrollRef}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                bounces={false}
+              {/* Slidable chart area with native horizontal scrolling for line and X-axis dates */}
+              <View
                 style={styles.scrollableChartArea}
-                contentContainerStyle={{ width: chartContentWidth }}
                 {...(Platform.OS === 'web' ? {
                   onMouseDown: handleMouseDown,
                   onMouseMove: handleMouseMove,
@@ -270,7 +266,6 @@ export default function HistoryChart() {
               >
                 <LineChart
                   data={chartData}
-                  width={chartContentWidth}
                   height={chartHeight}
                   spacing={calculatedSpacing}
                   initialSpacing={20}
@@ -286,7 +281,7 @@ export default function HistoryChart() {
                   yAxisThickness={0}
                   yAxisColor="transparent"
                   xAxisColor="transparent"
-                  rulesLength={chartContentWidth}
+                  rulesLength={totalChartWidth}
                   yAxisOffset={yAxisOffset}
                   maxValue={maxYValue}
                   noOfSections={4}
@@ -294,7 +289,11 @@ export default function HistoryChart() {
                   rulesType="dotted"
                   hideDataPoints={false}
                   maintainAspectRatio={false}
-                  disableScroll={true}
+                  scrollRef={horizontalScrollRef}
+                  scrollToEnd={true}
+                  scrollAnimation={false}
+                  showScrollIndicator={true}
+                  indicatorColor="white"
                   xAxisLabelsHeight={24}
                   labelsExtraHeight={16}
                   overflowBottom={24}
@@ -307,7 +306,7 @@ export default function HistoryChart() {
                     transform: [{ rotate: '0deg' }]
                   }}
                 />
-              </ScrollView>
+              </View>
 
               {/* Fixed container permanently pinned on the RIGHT for the Y-axis (price labels) */}
               <View style={[styles.fixedYAxisContainer, { height: chartHeight }]}>
@@ -458,9 +457,8 @@ const styles = StyleSheet.create({
   scrollableChartArea: {
     flex: 1,
     minHeight: 0,
+    overflow: 'hidden',
     ...(Platform.OS === 'web' ? {
-      overflowX: 'auto',
-      overflowY: 'hidden',
       cursor: 'grab',
       userSelect: 'none',
     } : {}),
