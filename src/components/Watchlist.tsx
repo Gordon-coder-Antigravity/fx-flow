@@ -455,7 +455,7 @@ const styles = StyleSheet.create({
     padding: 3,
   },
   infoContainer: {
-    flex: 0.8,
+    flex: 1,
     paddingRight: 8,
   },
   codeText: {
@@ -477,7 +477,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    flex: 1.2,
+    flex: 1,
     gap: 8,
     position: 'relative',
     zIndex: 10,
@@ -488,6 +488,7 @@ const styles = StyleSheet.create({
     fontWeight: '300',
     textAlign: 'right',
     flex: 1,
+    maxWidth: '80%',
     paddingVertical: 4,
   },
   baseRateText: {
