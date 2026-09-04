@@ -30,16 +30,17 @@ export default function App() {
             screenOptions={({ route }) => ({
               headerShown: false,
               tabBarStyle: {
-                backgroundColor: '#000000',
-                borderTopWidth: 0,
-                height: 100, // Taller bar to comfortably fit the elevated frame
-                paddingBottom: 30,
+                backgroundColor: '#0A1128',
+                borderTopWidth: 1,
+                borderTopColor: '#14203B',
+                height: Platform.OS === 'web' ? 72 : 90,
+                paddingBottom: Platform.OS === 'web' ? 12 : 25,
               },
-              tabBarShowLabel: false, // Turn off native label so we can build a perfect custom frame
+              tabBarShowLabel: false,
               tabBarIconStyle: {
                 width: 90,
-                height: 70, // Explicitly give the icon container enough height so it never cuts the text
-                marginTop: 20,
+                height: 60,
+                marginTop: Platform.OS === 'web' ? 6 : 16,
               },
               tabBarIcon: ({ focused, color, size }) => {
                 let iconName: keyof typeof Ionicons.glyphMap = 'home';

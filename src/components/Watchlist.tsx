@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, FlatList, Platform, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Dropdown } from 'react-native-element-dropdown';
@@ -37,6 +37,16 @@ export default function Watchlist() {
   const [editingCurrency, setEditingCurrency] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState('');
 
+  // Web drag-and-drop state
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [dragOffsetY, setDragOffsetY] = useState(0);
+  const isDraggingRef = useRef(false);
+  const startYRef = useRef(0);
+  const currentIndexRef = useRef<number | null>(null);
+  const watchlistRef = useRef<CurrencyData[]>([]);
+  watchlistRef.current = watchlist;
+
   const loadRates = async () => {
     setLoading(true);
 
@@ -47,7 +57,6 @@ export default function Watchlist() {
         const parsed = JSON.parse(storedWatchlist);
         if (Array.isArray(parsed) && parsed.length > 0) savedCodes = parsed;
       }
-      // Rule 1: Do NOT load previous amounts or base currency from local storage.
     } catch (e) {
       // default fallback
     }
@@ -58,7 +67,6 @@ export default function Watchlist() {
     });
     setWatchlist(initialData);
 
-    // Rule 1: Always set default base amount to 1 for the top currency on initialization
     const topCurrency = savedCodes[0] || 'USD';
     setCalcBaseCurrency(topCurrency);
     setCalcAmount(1);
@@ -75,7 +83,7 @@ export default function Watchlist() {
     loadRates();
   }, []);
 
-  // Persist only the watchlist order, never previous amounts
+  // Persist watchlist order
   useEffect(() => {
     const saveState = async () => {
       if (!loading && watchlist.length > 0) {
@@ -127,7 +135,6 @@ export default function Watchlist() {
     return parts.join('.');
   };
 
-  // onFocus: highlight the entire number with select() for instant overwrite
   const handleFocus = (code: string, e?: any) => {
     setEditingCurrency(code);
     const rateBase = rates[calcBaseCurrency] || 1;
@@ -135,7 +142,6 @@ export default function Watchlist() {
     const currentVal = (calcAmount / rateBase) * rateTarget;
     setEditingValue(currentVal.toFixed(4));
 
-    // Call e.target.select() immediately and with a slight timeout for iOS/mobile compatibility
     if (e?.target?.select) {
       e.target.select();
     }
@@ -149,7 +155,6 @@ export default function Watchlist() {
   const handleChangeAmount = (code: string, text: string) => {
     setEditingCurrency(code);
 
-    // Strip commas and any non-numeric / non-dot characters
     let clean = text.replace(/,/g, '').replace(/[^0-9.]/g, '');
     const parts = clean.split('.');
     if (parts.length > 2) {
@@ -160,7 +165,6 @@ export default function Watchlist() {
     if (clean !== '') {
       const num = parseFloat(clean);
       if (!isNaN(num)) {
-        // Valid number: recalculate global calculation state
         setCalcBaseCurrency(code);
         setCalcAmount(num);
       }
@@ -184,6 +188,31 @@ export default function Watchlist() {
     }
   };
 
+  // iOS Numeric Keypad actions
+  const handleKeypadPress = (val: string) => {
+    if (!editingCurrency) return;
+
+    let newValue = editingValue;
+    if (val === 'backspace') {
+      newValue = newValue.slice(0, -1);
+    } else if (val === '.') {
+      if (!newValue.includes('.')) {
+        newValue = newValue === '' ? '0.' : newValue + '.';
+      }
+    } else {
+      newValue = newValue + val;
+    }
+
+    handleChangeAmount(editingCurrency, newValue);
+  };
+
+  const handleKeypadDone = () => {
+    if (editingCurrency) {
+      handleBlurFormat(editingCurrency);
+    }
+    setEditingCurrency(null);
+  };
+
   const calculateAmount = (code: string): string => {
     if (editingCurrency === code) {
       if (editingValue === '') return '';
@@ -198,45 +227,119 @@ export default function Watchlist() {
     return formatThousands(result.toFixed(4));
   };
 
-  const moveItem = (index: number, direction: 'up' | 'down') => {
-    const newList = [...watchlist];
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= newList.length) return;
-    [newList[index], newList[targetIndex]] = [newList[targetIndex], newList[index]];
-    setWatchlist(newList);
+  // ---- Web iPhone Home Screen Drag and Drop System ----
+  const startDrag = (index: number, clientY: number) => {
+    if (Platform.OS !== 'web') return;
+    isDraggingRef.current = true;
+    currentIndexRef.current = index;
+    startYRef.current = clientY;
+    setDraggedIndex(index);
+    setDragOverIndex(index);
+    setDragOffsetY(0);
+
+    const onPointerMove = (e: PointerEvent | MouseEvent | TouchEvent) => {
+      if (!isDraggingRef.current || currentIndexRef.current === null) return;
+      const currentY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+      const diffY = currentY - startYRef.current;
+      setDragOffsetY(diffY);
+
+      // Approximate height of item is ~70px
+      const itemHeight = 70;
+      const shifted = Math.round(diffY / itemHeight);
+      const newTarget = Math.max(0, Math.min(watchlistRef.current.length - 1, currentIndexRef.current + shifted));
+      setDragOverIndex(newTarget);
+    };
+
+    const onPointerUp = () => {
+      if (!isDraggingRef.current || currentIndexRef.current === null) return;
+      const source = currentIndexRef.current;
+      const target = dragOverIndex !== null ? dragOverIndex : source;
+
+      if (source !== target && target >= 0 && target < watchlistRef.current.length) {
+        const newList = [...watchlistRef.current];
+        const [moved] = newList.splice(source, 1);
+        newList.splice(target, 0, moved);
+        setWatchlist(newList);
+      }
+
+      isDraggingRef.current = false;
+      currentIndexRef.current = null;
+      setDraggedIndex(null);
+      setDragOverIndex(null);
+      setDragOffsetY(0);
+
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('touchmove', onPointerMove);
+      window.removeEventListener('touchend', onPointerUp);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('touchmove', onPointerMove, { passive: false });
+    window.addEventListener('touchend', onPointerUp);
   };
 
-  // ---- Web Item Renderer ----
+  // Web Item Renderer with iPhone Home Screen Drag & Wobble
   const renderWebItem = ({ item, index }: { item: CurrencyData; index: number }) => {
     const isBase = (editingCurrency || calcBaseCurrency) === item.code;
     const amount = calculateAmount(item.code);
     
-    // Dynamically reduce font size for long numbers to prevent overflow
     const dynamicFontSize = 
-      amount.length > 15 ? 15 :
-      amount.length > 13 ? 18 :
-      amount.length > 11 ? 20 : 24;
+      amount.length > 15 ? 16 :
+      amount.length > 13 ? 19 :
+      amount.length > 11 ? 22 : 26;
+
+    const isThisDragged = draggedIndex === index;
+    const anyDragging = draggedIndex !== null;
+
+    // Calculate shift displacement for items displaced by dragged item
+    let translateY = 0;
+    if (anyDragging && !isThisDragged && dragOverIndex !== null && draggedIndex !== null) {
+      const itemHeight = 70;
+      if (draggedIndex < dragOverIndex && index > draggedIndex && index <= dragOverIndex) {
+        translateY = -itemHeight;
+      } else if (draggedIndex > dragOverIndex && index >= dragOverIndex && index < draggedIndex) {
+        translateY = itemHeight;
+      }
+    }
+
+    const itemWebStyle: any = {
+      transform: isThisDragged 
+        ? `translateY(${dragOffsetY}px) scale(1.06)` 
+        : `translateY(${translateY}px)`,
+      zIndex: isThisDragged ? 999 : 1,
+      transition: isThisDragged ? 'none' : 'transform 0.24s cubic-bezier(0.2, 0, 0, 1)',
+      cursor: isThisDragged ? 'grabbing' : 'default',
+    };
 
     return (
-      <View style={[styles.itemContainer, isBase && styles.itemContainerBase]}>
+      <View 
+        style={[
+          styles.itemContainer, 
+          isBase && styles.itemContainerBase,
+          isThisDragged && styles.itemContainerDragging,
+          Platform.OS === 'web' && itemWebStyle,
+        ]}
+      >
         {isBase && <View style={styles.baseIndicator} pointerEvents="none" />}
 
-        {/* Move up/down buttons on web */}
-        <View style={styles.moveButtons}>
-          <TouchableOpacity
-            onPress={() => moveItem(index, 'up')}
-            disabled={index === 0}
-            style={styles.moveBtn}
-          >
-            <Ionicons name="chevron-up" size={16} color={index === 0 ? '#2A364F' : '#8A99AF'} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => moveItem(index, 'down')}
-            disabled={index === watchlist.length - 1}
-            style={styles.moveBtn}
-          >
-            <Ionicons name="chevron-down" size={16} color={index === watchlist.length - 1 ? '#2A364F' : '#8A99AF'} />
-          </TouchableOpacity>
+        {/* 3-Horizontal-Lines Drag Handle with iPhone touch/mouse handler */}
+        <View 
+          style={styles.dragHandle}
+          {...(Platform.OS === 'web' ? {
+            onPointerDown: (e: any) => {
+              e.preventDefault();
+              startDrag(index, e.clientY);
+            },
+            onTouchStart: (e: any) => {
+              if (e.touches?.[0]) {
+                startDrag(index, e.touches[0].clientY);
+              }
+            }
+          } : {})}
+        >
+          <Ionicons name="menu-outline" size={24} color={isThisDragged ? '#00B4D8' : '#8A99AF'} />
         </View>
 
         <TouchableOpacity 
@@ -264,8 +367,6 @@ export default function Watchlist() {
             returnKeyType="done"
             selectTextOnFocus={true}
             editable={true}
-            adjustsFontSizeToFit={true}
-            minimumFontScale={0.5}
             numberOfLines={1}
           />
           <TouchableOpacity onPress={() => handleRemove(item.id)} style={styles.removeButton}>
@@ -276,7 +377,7 @@ export default function Watchlist() {
     );
   };
 
-  // ---- Native Item Renderer ----
+  // Native Item Renderer
   const renderNativeItem = ({ item, drag, isActive }: any) => {
     const CurrencyItemComponent = require('./CurrencyItem').default;
     return (
@@ -296,6 +397,31 @@ export default function Watchlist() {
 
   return (
     <View style={[styles.container, { paddingTop: Math.max(insets.top, 16) }]}>
+      {Platform.OS === 'web' && (
+        <style type="text/css">{`
+          @keyframes iosWiggle {
+            0% { transform: rotate(-1.5deg) translateY(0px); }
+            25% { transform: rotate(1.2deg) translateY(-1px); }
+            50% { transform: rotate(-1.2deg) translateY(0px); }
+            75% { transform: rotate(1.5deg) translateY(1px); }
+            100% { transform: rotate(-1.5deg) translateY(0px); }
+          }
+          .ios-drag-handle {
+            cursor: grab !important;
+            touch-action: none !important;
+            user-select: none !important;
+          }
+          .ios-drag-handle:active {
+            cursor: grabbing !important;
+          }
+          .ios-wobble-active {
+            animation: iosWiggle 0.28s ease-in-out infinite !important;
+            transform-origin: 50% 50% !important;
+          }
+        `}</style>
+      )}
+
+      {/* Header matching Image 1 */}
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>FX FLOW</Text>
@@ -310,6 +436,7 @@ export default function Watchlist() {
         </TouchableOpacity>
       </View>
 
+      {/* Add Section matching Image 1 */}
       <View style={styles.addSection}>
         <Dropdown
           style={styles.dropdown}
@@ -329,6 +456,7 @@ export default function Watchlist() {
         </TouchableOpacity>
       </View>
 
+      {/* Watchlist Items */}
       {loading && watchlist.length === 0 ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator color="#00B4D8" size="large" />
@@ -351,6 +479,77 @@ export default function Watchlist() {
           keyboardShouldPersistTaps="always"
         />
       )}
+
+      {/* iOS Frosted Numeric Keypad & Floating Done Button (matching Image 1) */}
+      {editingCurrency && (
+        <View style={styles.keypadOverlay}>
+          {/* Floating Done Button */}
+          <View style={styles.doneBar}>
+            <TouchableOpacity style={styles.doneButton} onPress={handleKeypadDone}>
+              <Text style={styles.doneButtonText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Keypad Grid */}
+          <View style={styles.keypadGrid}>
+            <View style={styles.keypadRow}>
+              <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('1')}>
+                <Text style={styles.keyNumber}>1</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('2')}>
+                <Text style={styles.keyNumber}>2</Text>
+                <Text style={styles.keyLetters}>ABC</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('3')}>
+                <Text style={styles.keyNumber}>3</Text>
+                <Text style={styles.keyLetters}>DEF</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.keypadRow}>
+              <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('4')}>
+                <Text style={styles.keyNumber}>4</Text>
+                <Text style={styles.keyLetters}>GHI</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('5')}>
+                <Text style={styles.keyNumber}>5</Text>
+                <Text style={styles.keyLetters}>JKL</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('6')}>
+                <Text style={styles.keyNumber}>6</Text>
+                <Text style={styles.keyLetters}>MNO</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.keypadRow}>
+              <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('7')}>
+                <Text style={styles.keyNumber}>7</Text>
+                <Text style={styles.keyLetters}>PQRS</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('8')}>
+                <Text style={styles.keyNumber}>8</Text>
+                <Text style={styles.keyLetters}>TUV</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('9')}>
+                <Text style={styles.keyNumber}>9</Text>
+                <Text style={styles.keyLetters}>WXYZ</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.keypadRow}>
+              <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('.')}>
+                <Text style={styles.keyNumber}>.</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('0')}>
+                <Text style={styles.keyNumber}>0</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.keypadKey} onPress={() => handleKeypadPress('backspace')}>
+                <Ionicons name="backspace-outline" size={24} color="#111827" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -370,7 +569,7 @@ const styles = StyleSheet.create({
   },
   title: {
     color: '#FFFFFF',
-    fontSize: 28,
+    fontSize: 30,
     fontWeight: 'bold',
     letterSpacing: 1,
   },
@@ -448,9 +647,19 @@ const styles = StyleSheet.create({
     borderBottomColor: '#1A253C',
     position: 'relative',
     paddingHorizontal: 12,
+    backgroundColor: 'transparent',
   },
   itemContainerBase: {
     backgroundColor: 'rgba(0, 180, 216, 0.04)',
+  },
+  itemContainerDragging: {
+    backgroundColor: '#14203B',
+    borderRadius: 12,
+    shadowColor: '#00B4D8',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 15,
   },
   baseIndicator: {
     position: 'absolute',
@@ -462,13 +671,12 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 4,
     borderBottomRightRadius: 4,
   },
-  moveButtons: {
-    flexDirection: 'column',
-    marginRight: 4,
-    gap: 2,
-  },
-  moveBtn: {
-    padding: 3,
+  dragHandle: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    cursor: 'grab' as any,
   },
   infoContainer: {
     flex: 0.9,
@@ -476,18 +684,18 @@ const styles = StyleSheet.create({
   },
   codeText: {
     color: '#FFFFFF',
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
     marginBottom: 2,
   },
   nameText: {
     color: '#8A99AF',
-    fontSize: 11,
+    fontSize: 12,
   },
   symbolText: {
     color: '#6B7A90',
-    fontSize: 10,
-    marginTop: 1,
+    fontSize: 11,
+    marginTop: 2,
   },
   rightContainer: {
     flexDirection: 'row',
@@ -514,5 +722,81 @@ const styles = StyleSheet.create({
   removeButton: {
     padding: 6,
     marginLeft: 4,
+  },
+  // iOS Numeric Keypad Styles (Image 1)
+  keypadOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(200, 204, 212, 0.92)',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 8,
+    paddingBottom: 24,
+    paddingHorizontal: 6,
+    zIndex: 2000,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 20,
+    ...(Platform.OS === 'web' ? {
+      backdropFilter: 'blur(25px)',
+      WebkitBackdropFilter: 'blur(25px)',
+    } : {}),
+  },
+  doneBar: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 12,
+    paddingBottom: 6,
+  },
+  doneButton: {
+    backgroundColor: 'rgba(20, 28, 48, 0.85)',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+  },
+  doneButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: 'bold',
+  },
+  keypadGrid: {
+    gap: 6,
+  },
+  keypadRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  keypadKey: {
+    flex: 1,
+    height: 48,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1.5 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1,
+    elevation: 2,
+  },
+  keyNumber: {
+    color: '#111827',
+    fontSize: 22,
+    fontWeight: '500',
+  },
+  keyLetters: {
+    color: '#111827',
+    fontSize: 9,
+    fontWeight: '600',
+    letterSpacing: 1,
+    marginTop: -2,
   },
 });

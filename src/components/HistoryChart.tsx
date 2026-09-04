@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Platform, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Platform } from 'react-native';
 import { Dropdown } from 'react-native-element-dropdown';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,26 +7,41 @@ import { Ionicons } from '@expo/vector-icons';
 import { AVAILABLE_CURRENCIES } from '../utils/mockData';
 import { fetchHistory, Timeframe, ChartDataPoint } from '../utils/historyApi';
 
-const TIMEFRAMES: Timeframe[] = ['1D', '1W', '1M', '3M', '6M', '1Y', '5Y', '10Y'];
+const TIMEFRAMES: Timeframe[] = ['1D', '5D', '1M', '3M', '6M', 'YTD', '1Y', '5Y', 'All'];
 
 const FLAGS: Record<string, string> = {
   USD: '🇺🇸', EUR: '🇪🇺', CAD: '🇨🇦', TWD: '🇹🇼', JPY: '🇯🇵', CNY: '🇨🇳', 
   MYR: '🇲🇾', GBP: '🇬🇧', AUD: '🇦🇺', PHP: '🇵🇭', TRY: '🇹🇷'
 };
 
+const TIMEFRAME_INTERVALS: Record<Timeframe, string> = {
+  '1D': '1 min',
+  '5D': '5 min',
+  '1M': '1 hour',
+  '3M': '1 day',
+  '6M': '1 day',
+  'YTD': '1 day',
+  '1Y': '1 day',
+  '5Y': '1 wk',
+  'All': '1 mo',
+};
+
 export default function HistoryChart() {
   const insets = useSafeAreaInsets();
   const [baseCurrency, setBaseCurrency] = useState('USD');
-  const [targetCurrency, setTargetCurrency] = useState('EUR');
-  const [timeframe, setTimeframe] = useState<Timeframe>('1Y');
+  const [targetCurrency, setTargetCurrency] = useState('JPY');
+  const [timeframe, setTimeframe] = useState<Timeframe>('1D');
   
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [loading, setLoading] = useState(true);
   
   const [currentRate, setCurrentRate] = useState(1);
   const [percentChange, setPercentChange] = useState(0);
-  const [trendColor, setTrendColor] = useState('#2962FF');
+  const [trendColor, setTrendColor] = useState('#00C853');
   const [lastDate, setLastDate] = useState('');
+
+  // OHLC bar state for Yahoo Finance header
+  const [hoveredOHLC, setHoveredOHLC] = useState<{ open: number; high: number; low: number; close: number } | null>(null);
 
   // Refs for Lightweight Charts
   const chartContainerRef = useRef<any>(null);
@@ -43,12 +58,19 @@ export default function HistoryChart() {
     
     if (history.length > 0) {
       const firstRate = history[0].value;
-      const latestRate = history[history.length - 1].value;
+      const latestPoint = history[history.length - 1];
+      const latestRate = latestPoint.value;
       
       setCurrentRate(latestRate);
       setPercentChange(((latestRate - firstRate) / (firstRate || 1)) * 100);
-      setLastDate(history[history.length - 1].date);
-      setTrendColor(latestRate >= firstRate ? '#00E676' : '#FF3D00');
+      setLastDate(latestPoint.date);
+      setTrendColor(latestRate >= firstRate ? '#00C853' : '#FF3D00');
+      setHoveredOHLC({
+        open: latestPoint.open,
+        high: latestPoint.high,
+        low: latestPoint.low,
+        close: latestPoint.close,
+      });
     }
     setChartData(history);
     setLoading(false);
@@ -67,29 +89,47 @@ export default function HistoryChart() {
         const lwCharts = await import('lightweight-charts');
         if (!isMounted || !chartContainerRef.current) return;
 
-        // Ensure container has valid dimensions to prevent fatal crash
-        const width = chartContainerRef.current.clientWidth || 300;
-        const height = chartContainerRef.current.clientHeight || 300;
+        const container = chartContainerRef.current;
+        const width = container.clientWidth || 360;
+        const height = container.clientHeight || 340;
 
-        chart = lwCharts.createChart(chartContainerRef.current, {
+        chart = lwCharts.createChart(container, {
           width,
           height,
           layout: {
-            background: { type: 'solid', color: 'transparent' },
-            textColor: '#A0A8B6',
+            background: { type: lwCharts.ColorType.Solid, color: '#0B0E14' },
+            textColor: '#8A99AF',
+            fontSize: 11,
           },
           grid: {
-            vertLines: { color: '#2B2B43', style: 1 }, // 1 = Dotted
-            horzLines: { color: '#2B2B43', style: 1 },
+            vertLines: { color: '#1B2333', style: lwCharts.LineStyle.Dotted },
+            horzLines: { color: '#1B2333', style: lwCharts.LineStyle.Dotted },
           },
           rightPriceScale: {
-            borderVisible: false,
+            borderVisible: true,
+            borderColor: '#242F45',
+            scaleMargins: { top: 0.12, bottom: 0.15 },
           },
           timeScale: {
-            borderVisible: false,
+            borderVisible: true,
+            borderColor: '#242F45',
+            timeVisible: true,
+            secondsVisible: false,
           },
-          localization: {
-            locale: 'en-US',
+          crosshair: {
+            mode: lwCharts.CrosshairMode.Normal,
+            vertLine: {
+              color: '#4A5D78',
+              width: 1,
+              style: lwCharts.LineStyle.Dashed,
+              labelBackgroundColor: '#1F2937',
+            },
+            horzLine: {
+              color: '#4A5D78',
+              width: 1,
+              style: lwCharts.LineStyle.Dashed,
+              labelBackgroundColor: '#1F2937',
+            },
           },
           handleScroll: true,
           handleScale: true,
@@ -97,26 +137,53 @@ export default function HistoryChart() {
 
         chartRef.current = chart;
 
-        const lineSeries = chart.addAreaSeries({
+        // In Lightweight Charts v5: chart.addSeries(AreaSeries, options)
+        const areaSeries = chart.addSeries(lwCharts.AreaSeries, {
           lineColor: '#2962FF',
-          topColor: 'rgba(41, 98, 255, 0.28)',
-          bottomColor: 'rgba(41, 98, 255, 0)',
+          topColor: 'rgba(41, 98, 255, 0.38)',
+          bottomColor: 'rgba(41, 98, 255, 0.00)',
           lineWidth: 2,
+          priceLineVisible: true,
+          priceLineColor: '#00C853',
+          priceLineStyle: lwCharts.LineStyle.Dotted,
+          lastValueVisible: true,
+          priceFormat: {
+            type: 'price',
+            precision: 4,
+            minMove: 0.0001,
+          },
         });
-        seriesRef.current = lineSeries;
+        seriesRef.current = areaSeries;
+
+        // Crosshair move subscription to update Yahoo Finance OHLC banner
+        chart.subscribeCrosshairMove((param: any) => {
+          if (!param || !param.time || !param.seriesData) {
+            return;
+          }
+          const dataVal = param.seriesData.get(areaSeries);
+          if (dataVal) {
+            const val = dataVal.value || 0;
+            setHoveredOHLC({
+              open: val,
+              high: val,
+              low: val,
+              close: val,
+            });
+          }
+        });
 
         if (chartData && chartData.length > 0) {
-          applyDataToSeries(chartData, lineSeries, chart);
+          applyDataToSeries(chartData, areaSeries, chart);
         }
 
         resizeObserver = new ResizeObserver(entries => {
-          if (entries.length === 0 || entries[0].target !== chartContainerRef.current) return;
+          if (entries.length === 0 || entries[0].target !== container) return;
           const newRect = entries[0].contentRect;
           if (chart && newRect.width > 0 && newRect.height > 0) {
             chart.applyOptions({ width: newRect.width, height: newRect.height });
           }
         });
-        resizeObserver.observe(chartContainerRef.current);
+        resizeObserver.observe(container);
       } catch (err) {
         console.error('Fatal Lightweight Charts Error:', err);
       }
@@ -133,7 +200,7 @@ export default function HistoryChart() {
       chartRef.current = null;
       seriesRef.current = null;
     };
-  }, []); // Run only once on mount
+  }, []);
 
   // Update Data in Lightweight Charts when chartData changes
   useEffect(() => {
@@ -144,22 +211,15 @@ export default function HistoryChart() {
 
   const applyDataToSeries = (data: ChartDataPoint[], series: any, chartInst: any) => {
     try {
-      if (!data || data.length === 0) {
-        console.warn('Warning: chart data array is empty!');
-        return;
-      }
+      if (!data || data.length === 0) return;
 
       const isIntraday = timeframe === '1D';
 
-      // 1. Map historical data to ensure every object has strictly { time, value }
       const rawMapped = data.map(d => {
-        let timeVal: string | number = '';
+        let timeVal: any = '';
         if (isIntraday) {
-          timeVal = typeof d.timestamp === 'number' && !isNaN(d.timestamp) && d.timestamp > 0 
-            ? Math.floor(d.timestamp) 
-            : 0;
+          timeVal = typeof d.timestamp === 'number' && d.timestamp > 0 ? Math.floor(d.timestamp) : 0;
         } else {
-          // For daily/weekly/monthly, use YYYY-MM-DD string
           if (d.dateStr && /^\d{4}-\d{2}-\d{2}$/.test(d.dateStr)) {
             timeVal = d.dateStr;
           } else if (d.timestamp) {
@@ -173,18 +233,16 @@ export default function HistoryChart() {
         };
       }).filter(d => Boolean(d.time) && d.value > 0);
 
-      // 2. Filter out duplicate dates
       const uniqueMap = new Map<string | number, number>();
       for (const item of rawMapped) {
         uniqueMap.set(item.time, item.value);
       }
 
-      const formattedData: { time: string | number; value: number }[] = [];
+      const formattedData: { time: any; value: number }[] = [];
       for (const [time, value] of uniqueMap.entries()) {
         formattedData.push({ time, value });
       }
 
-      // 3. Sort chronologically from oldest to newest
       formattedData.sort((a, b) => {
         if (typeof a.time === 'string' && typeof b.time === 'string') {
           return a.time.localeCompare(b.time);
@@ -192,11 +250,10 @@ export default function HistoryChart() {
         return Number(a.time) - Number(b.time);
       });
 
-      // 4. Verify right before setData
-      console.log(formattedData);
-
-      series.setData(formattedData);
-      chartInst.timeScale().fitContent();
+      if (formattedData.length > 0) {
+        series.setData(formattedData);
+        chartInst.timeScale().fitContent();
+      }
     } catch (e) {
       console.error('Lightweight charts data formatting error:', e);
     }
@@ -207,14 +264,31 @@ export default function HistoryChart() {
     setTargetCurrency(baseCurrency);
   };
 
+  const handleZoom = (direction: 'in' | 'out') => {
+    if (chartRef.current) {
+      const timeScale = chartRef.current.timeScale();
+      const logicalRange = timeScale.getVisibleLogicalRange();
+      if (logicalRange) {
+        const span = logicalRange.to - logicalRange.from;
+        const delta = direction === 'in' ? span * 0.25 : -span * 0.25;
+        timeScale.setVisibleLogicalRange({
+          from: logicalRange.from + delta,
+          to: logicalRange.to - delta,
+        });
+      }
+    }
+  };
+
+  const currentDisplayRate = hoveredOHLC ? hoveredOHLC.close : currentRate;
+  const activeOHLC = hoveredOHLC || { open: currentRate, high: currentRate, low: currentRate, close: currentRate };
+
   return (
-    <View style={[styles.container, { paddingTop: Math.max(insets.top, 16) + 8, paddingBottom: 16 }]}>
+    <View style={[styles.container, { paddingTop: Math.max(insets.top, 16) + 4, paddingBottom: 12 }]}>
       {Platform.OS === 'web' && (
         <style type="text/css">{`
           .tv-chart-container {
             touch-action: none !important;
           }
-          /* Dropdown menu width and single-line nowrap fix */
           .dropdown-popup,
           div[role="listbox"],
           div[role="combobox"] + div,
@@ -223,8 +297,8 @@ export default function HistoryChart() {
             min-width: 220px !important;
             width: max-content !important;
             white-space: nowrap !important;
-            background-color: #1C1C1E !important;
-            border: 1px solid #2B2B43 !important;
+            background-color: #14203B !important;
+            border: 1px solid #1A253C !important;
           }
           .dropdown-item-text,
           div[role="listbox"] *,
@@ -241,7 +315,7 @@ export default function HistoryChart() {
       {/* Currency Selectors */}
       <View style={styles.selectorsContainer}>
         <View style={styles.pillContainer}>
-          <Text style={styles.flagIcon}>{FLAGS[baseCurrency]}</Text>
+          <Text style={styles.flagIcon}>{FLAGS[baseCurrency] || '🌐'}</Text>
           <Dropdown
             style={styles.dropdown}
             data={AVAILABLE_CURRENCIES}
@@ -252,9 +326,9 @@ export default function HistoryChart() {
             placeholderStyle={styles.dropdownText}
             selectedTextStyle={styles.dropdownText}
             itemTextStyle={styles.dropdownItemText}
-            itemContainerStyle={{ backgroundColor: '#1C1C1E', minWidth: 220 }}
+            itemContainerStyle={{ backgroundColor: '#14203B', minWidth: 220 }}
             containerStyle={styles.dropdownPopup}
-            activeColor="#2B2B43"
+            activeColor="#1A253C"
             iconColor="#FFFFFF"
             showsVerticalScrollIndicator={false}
             renderItem={(item) => (
@@ -272,7 +346,7 @@ export default function HistoryChart() {
         </TouchableOpacity>
 
         <View style={styles.pillContainer}>
-          <Text style={styles.flagIcon}>{FLAGS[targetCurrency]}</Text>
+          <Text style={styles.flagIcon}>{FLAGS[targetCurrency] || '🌐'}</Text>
           <Dropdown
             style={styles.dropdown}
             data={AVAILABLE_CURRENCIES}
@@ -283,9 +357,9 @@ export default function HistoryChart() {
             placeholderStyle={styles.dropdownText}
             selectedTextStyle={styles.dropdownText}
             itemTextStyle={styles.dropdownItemText}
-            itemContainerStyle={{ backgroundColor: '#1C1C1E', minWidth: 220 }}
+            itemContainerStyle={{ backgroundColor: '#14203B', minWidth: 220 }}
             containerStyle={styles.dropdownPopup}
-            activeColor="#2B2B43"
+            activeColor="#1A253C"
             iconColor="#FFFFFF"
             showsVerticalScrollIndicator={false}
             renderItem={(item) => (
@@ -299,22 +373,37 @@ export default function HistoryChart() {
         </View>
       </View>
 
-      {/* Rate Display */}
+      {/* Yahoo Finance Header Bar: O: ... H: ... L: ... C: ... V: 0  +  Green Price Badge */}
+      <View style={styles.yahooHeaderBar}>
+        <View style={styles.ohlcContainer}>
+          <Text style={styles.ohlcText}>
+            <Text style={styles.ohlcLabel}>O:</Text>{activeOHLC.open.toFixed(4)}{'  '}
+            <Text style={styles.ohlcLabel}>H:</Text>{activeOHLC.high.toFixed(4)}{'  '}
+            <Text style={styles.ohlcLabel}>L:</Text>{activeOHLC.low.toFixed(4)}{'  '}
+            <Text style={styles.ohlcLabel}>C:</Text>{activeOHLC.close.toFixed(4)}{'  '}
+            <Text style={styles.ohlcLabel}>V:</Text>0
+          </Text>
+          <View style={styles.volTag}>
+            <Text style={styles.volTagText}>vol undr</Text>
+            <Ionicons name="chevron-up" size={10} color="#8A99AF" style={{ marginLeft: 2 }} />
+          </View>
+        </View>
+        <View style={[styles.priceBadge, { backgroundColor: trendColor }]}>
+          <Text style={styles.priceBadgeText}>{currentDisplayRate.toFixed(4)}</Text>
+        </View>
+      </View>
+
+      {/* Primary Rate & Percentage Header */}
       <View style={styles.rateDisplayContainer}>
-        <Text style={styles.singleLineRate} adjustsFontSizeToFit numberOfLines={1}>
-          <Text style={styles.mainRateBase}>1 {baseCurrency}</Text>
-          <Text style={styles.mainRateEqual}> = </Text>
-          <Text style={styles.mainRateValue}>{currentRate.toFixed(4)}</Text>
-          <Text style={styles.mainRateTarget}> {targetCurrency}</Text>
-        </Text>
-        
-        <View style={styles.rateSubRow}>
-          <View style={styles.changeContainer}>
-            <Ionicons name={percentChange >= 0 ? 'arrow-up' : 'arrow-down'} size={14} color={trendColor} />
+        <View style={styles.rateRow}>
+          <Text style={styles.rateValueText}>
+            1 {baseCurrency} = {currentRate.toFixed(4)} {targetCurrency}
+          </Text>
+          <View style={styles.changeBadge}>
+            <Ionicons name={percentChange >= 0 ? 'caret-up' : 'caret-down'} size={12} color={trendColor} />
             <Text style={[styles.changeText, { color: trendColor }]}>
-              {Math.abs(percentChange).toFixed(2)}%
+              {percentChange >= 0 ? '+' : ''}{percentChange.toFixed(2)}%
             </Text>
-            <Text style={styles.dateText}>{lastDate}</Text>
           </View>
         </View>
       </View>
@@ -331,15 +420,23 @@ export default function HistoryChart() {
               <ActivityIndicator color="#2962FF" size="large" />
             </View>
           )}
-          {Platform.OS !== 'web' && (
-            <View style={styles.loadingWrapper}>
-              <Text style={{ color: '#8A99AF' }}>Lightweight charts requires Web DOM.</Text>
+
+          {/* Yahoo Finance Volume & Zoom Controls Overlay */}
+          <View style={styles.chartControlsOverlay} pointerEvents="box-none">
+            <Text style={styles.volumeWatermark}>Volume Not Available</Text>
+            <View style={styles.zoomButtonsRow}>
+              <TouchableOpacity style={styles.zoomBtn} onPress={() => handleZoom('out')}>
+                <Ionicons name="remove" size={14} color="#C4D1EB" />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.zoomBtn} onPress={() => handleZoom('in')}>
+                <Ionicons name="add" size={14} color="#C4D1EB" />
+              </TouchableOpacity>
             </View>
-          )}
+          </View>
         </View>
       </View>
 
-      {/* Period Option Buttons */}
+      {/* Yahoo Finance Timeframe Bar (1D 5D 1M 3M 6M YTD 1Y 5Y All) */}
       <View style={styles.timeframeWrapper}>
         <ScrollView 
           horizontal 
@@ -347,15 +444,27 @@ export default function HistoryChart() {
           style={styles.timeframeScrollView}
           contentContainerStyle={styles.timeframeContainer}
         >
-          {TIMEFRAMES.map((tf) => (
-            <TouchableOpacity 
-              key={tf} 
-              style={[styles.tfButton, timeframe === tf && styles.tfButtonActive]}
-              onPress={() => setTimeframe(tf)}
-            >
-              <Text style={[styles.tfText, timeframe === tf && styles.tfTextActive]}>{tf}</Text>
-            </TouchableOpacity>
-          ))}
+          {TIMEFRAMES.map((tf) => {
+            const isActive = timeframe === tf;
+            return (
+              <TouchableOpacity 
+                key={tf} 
+                style={[styles.tfButton, isActive && styles.tfButtonActive]}
+                onPress={() => setTimeframe(tf)}
+              >
+                <Text style={[styles.tfText, isActive && styles.tfTextActive]}>{tf}</Text>
+              </TouchableOpacity>
+            );
+          })}
+
+          <View style={styles.intervalDivider} />
+
+          {/* Interval Indicator */}
+          <View style={styles.intervalBadge}>
+            <Ionicons name="calendar-outline" size={13} color="#8A99AF" style={{ marginRight: 6 }} />
+            <Text style={styles.intervalText}>Interval: {TIMEFRAME_INTERVALS[timeframe]}</Text>
+            <Ionicons name="chevron-down" size={12} color="#8A99AF" style={{ marginLeft: 4 }} />
+          </View>
         </ScrollView>
       </View>
     </View>
@@ -365,23 +474,25 @@ export default function HistoryChart() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: '#0B0E14',
   },
   selectorsContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   pillContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1C1C1E',
-    borderRadius: 24,
+    backgroundColor: '#14203B',
+    borderRadius: 20,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 6,
     flex: 0.46,
+    borderWidth: 1,
+    borderColor: '#1A253C',
   },
   flagIcon: {
     fontSize: 18,
@@ -389,90 +500,123 @@ const styles = StyleSheet.create({
   },
   dropdown: {
     flex: 1,
-    height: 30,
+    height: 28,
   },
   dropdownText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
   },
   dropdownItemText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
     ...(Platform.OS === 'web' ? { whiteSpace: 'nowrap' } as any : {}),
   },
   dropdownItemRow: {
     paddingVertical: 10,
     paddingHorizontal: 12,
-    backgroundColor: '#1C1C1E',
+    backgroundColor: '#14203B',
     minWidth: 220,
     flexDirection: 'row',
     alignItems: 'center',
   },
   dropdownPopup: {
-    backgroundColor: '#1C1C1E',
+    backgroundColor: '#14203B',
     borderWidth: 1,
-    borderColor: '#2B2B43',
+    borderColor: '#1A253C',
     borderRadius: 12,
     minWidth: 220,
     width: 220,
   },
   swapButton: {
-    padding: 8,
+    padding: 6,
+  },
+  yahooHeaderBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+    backgroundColor: '#0E131C',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#1A2333',
+  },
+  ohlcContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  ohlcText: {
+    color: '#C4D1EB',
+    fontSize: 11,
+    fontFamily: Platform.OS === 'web' ? 'monospace' : undefined,
+  },
+  ohlcLabel: {
+    color: '#6B7A90',
+    fontWeight: '600',
+  },
+  volTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#161F2E',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#243247',
+  },
+  volTagText: {
+    color: '#8A99AF',
+    fontSize: 10,
+  },
+  priceBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  priceBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+    fontFamily: Platform.OS === 'web' ? 'monospace' : undefined,
   },
   rateDisplayContainer: {
-    paddingHorizontal: 20,
-    marginBottom: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
   },
-  singleLineRate: {
-    width: '100%',
-    marginBottom: 4,
-  },
-  mainRateBase: {
-    color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: 'bold',
-  },
-  mainRateEqual: {
-    color: '#FFFFFF',
-    fontSize: 22,
-  },
-  mainRateValue: {
-    color: '#FFFFFF',
-    fontSize: 30,
-    fontWeight: 'bold',
-  },
-  mainRateTarget: {
-    color: '#8A99AF',
-    fontSize: 20,
-  },
-  rateSubRow: {
+  rateRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    width: '100%',
   },
-  changeContainer: {
+  rateValueText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
+  },
+  changeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#14203B',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
   },
   changeText: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 4,
-    marginRight: 12,
-  },
-  dateText: {
-    color: '#5C6B89',
-    fontSize: 14,
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginLeft: 3,
   },
   chartWrapper: {
     flex: 1,
-    flexDirection: 'column',
     width: '100%',
-    paddingHorizontal: 0, 
-    marginTop: 4,
+    position: 'relative',
+    marginTop: 2,
   },
   chartDualLayerContainer: {
     flex: 1,
@@ -481,16 +625,49 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   loadingWrapper: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: 'rgba(11, 14, 20, 0.7)',
     zIndex: 10,
   },
+  chartControlsOverlay: {
+    position: 'absolute',
+    bottom: 8,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 5,
+  },
+  volumeWatermark: {
+    color: '#42516B',
+    fontSize: 11,
+    fontWeight: '500',
+    marginBottom: 6,
+  },
+  zoomButtonsRow: {
+    flexDirection: 'row',
+    backgroundColor: '#161F2E',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#243247',
+    overflow: 'hidden',
+  },
+  zoomBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
   timeframeWrapper: {
-    height: 48,
+    height: 44,
     width: '100%',
+    backgroundColor: '#0E131C',
+    borderTopWidth: 1,
+    borderColor: '#1A2333',
     justifyContent: 'center',
-    marginBottom: 4,
   },
   timeframeScrollView: {
     width: '100%',
@@ -499,32 +676,51 @@ const styles = StyleSheet.create({
       overflowY: 'hidden',
       scrollbarWidth: 'none',
       msOverflowStyle: 'none',
-      WebkitOverflowScrolling: 'touch',
     } : {}),
   },
   timeframeContainer: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     flexDirection: 'row',
-    gap: 10,
     alignItems: 'center',
+    gap: 4,
   },
   tfButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#1C1C1E',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
     justifyContent: 'center',
     alignItems: 'center',
   },
   tfButtonActive: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#1E40AF',
   },
   tfText: {
-    color: '#FFFFFF',
-    fontSize: 13,
+    color: '#8A99AF',
+    fontSize: 12,
     fontWeight: '600',
   },
   tfTextActive: {
-    color: '#000000',
+    color: '#FFFFFF',
+  },
+  intervalDivider: {
+    width: 1,
+    height: 18,
+    backgroundColor: '#243247',
+    marginHorizontal: 8,
+  },
+  intervalBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: '#161F2E',
+    borderWidth: 1,
+    borderColor: '#243247',
+  },
+  intervalText: {
+    color: '#8A99AF',
+    fontSize: 11,
+    fontWeight: '500',
   },
 });

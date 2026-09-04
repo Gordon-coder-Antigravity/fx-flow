@@ -125,8 +125,6 @@ export default function CurrencyItem({
             returnKeyType="done"
             selectTextOnFocus={true}
             editable={true}
-            adjustsFontSizeToFit={true}
-            minimumFontScale={0.5}
             numberOfLines={1}
           />
           <TouchableOpacity onPress={() => onRemove(item.id)} style={styles.removeButton}>
