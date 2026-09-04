@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { AVAILABLE_CURRENCIES } from '../utils/mockData';
 import { fetchHistory, Timeframe, ChartDataPoint } from '../utils/historyApi';
+import Tooltip from './Tooltip';
 
 const TIMEFRAMES: Timeframe[] = ['1D', '1W', '1M', '3M', '6M', '1Y', '5Y', '10Y'];
 
@@ -28,6 +29,14 @@ export default function HistoryChart() {
   const [percentChange, setPercentChange] = useState(0);
   const [trendColor, setTrendColor] = useState('#2962FF');
   const [lastDate, setLastDate] = useState('');
+
+  const [selectedPoint, setSelectedPoint] = useState<{
+    index: number;
+    x: number;
+    y: number;
+    value: number;
+    date: string;
+  } | null>(null);
 
   const horizontalScrollRef = useRef<ScrollView>(null);
   const isDragging = useRef(false);
@@ -154,6 +163,45 @@ export default function HistoryChart() {
     ? Math.max(36, Math.floor((chartContentWidth - 126) / (chartData.length - 1)))
     : 40;
 
+  // Set the latest point as active whenever chart data loads or geometry updates
+  useEffect(() => {
+    if (chartData.length > 0) {
+      const lastIdx = chartData.length - 1;
+      const lastItem = chartData[lastIdx];
+      const norm = maxYValue > 0 ? (lastItem.value - yAxisOffset) / maxYValue : 0.5;
+      const ptY = Math.max(15, Math.min(chartHeight - 15, chartHeight - norm * chartHeight));
+      const ptX = 50 + lastIdx * calculatedSpacing;
+      setSelectedPoint({
+        index: lastIdx,
+        x: ptX,
+        y: ptY,
+        value: lastItem.value,
+        date: lastItem.date,
+      });
+    }
+  }, [chartData, chartHeight, calculatedSpacing, maxYValue, yAxisOffset]);
+
+  const handlePointPress = (item: ChartDataPoint, index: number, colX: number) => {
+    const norm = maxYValue > 0 ? (item.value - yAxisOffset) / maxYValue : 0.5;
+    const ptY = Math.max(15, Math.min(chartHeight - 15, chartHeight - norm * chartHeight));
+    
+    setSelectedPoint({
+      index,
+      x: colX,
+      y: ptY,
+      value: item.value,
+      date: item.date,
+    });
+
+    setCurrentRate(item.value);
+    setLastDate(item.date);
+    if (chartData.length > 0) {
+      const firstRate = chartData[0].value;
+      setPercentChange(((item.value - firstRate) / (firstRate || 1)) * 100);
+      setTrendColor(item.value >= firstRate ? '#00E676' : '#FF3D00');
+    }
+  };
+
   // Compute 5 fixed Y-axis labels matching the 4 grid line sections
   const yStep = maxYValue / 4;
   const yAxisLabels = [
@@ -260,7 +308,7 @@ export default function HistoryChart() {
                 showsHorizontalScrollIndicator={false}
                 bounces={true}
                 style={styles.chartScrollWrapper}
-                contentContainerStyle={{ width: chartContentWidth }}
+                contentContainerStyle={{ width: chartContentWidth, height: chartHeight + 40 }}
                 {...(Platform.OS === 'web' ? {
                   onMouseDown: handleMouseDown,
                   onMouseMove: handleMouseMove,
@@ -268,47 +316,110 @@ export default function HistoryChart() {
                   onMouseLeave: handleMouseUp,
                 } : {})}
               >
-                {/* pointerEvents: none guarantees that no SVG/responder traps touch events */}
-                <View pointerEvents="none" style={{ width: chartContentWidth }}>
-                  <LineChart
-                    data={chartData}
-                    width={chartContentWidth}
-                    height={chartHeight}
-                    spacing={calculatedSpacing}
-                    initialSpacing={50}
-                    endSpacing={76}
-                    color="#2962FF"
-                    thickness={2.5}
-                    startFillColor="#2962FF"
-                    endFillColor="#2962FF"
-                    startOpacity={0.25}
-                    endOpacity={0.01}
-                    hideYAxisText={true}
-                    yAxisLabelWidth={0}
-                    yAxisThickness={0}
-                    yAxisColor="transparent"
-                    xAxisColor="transparent"
-                    rulesLength={chartContentWidth}
-                    yAxisOffset={yAxisOffset}
-                    maxValue={maxYValue}
-                    noOfSections={4}
-                    rulesColor="#1A253C"
-                    rulesType="dotted"
-                    hideDataPoints={false}
-                    maintainAspectRatio={false}
-                    disableScroll={true}
-                    xAxisLabelsHeight={24}
-                    labelsExtraHeight={16}
-                    overflowBottom={24}
-                    xAxisLabelTextStyle={{ 
-                      color: '#5C6B89', 
-                      fontSize: 11, 
-                      width: 80, 
-                      textAlign: 'center', 
-                      marginLeft: -40,
-                      transform: [{ rotate: '0deg' }]
-                    }}
-                  />
+                <View style={{ width: chartContentWidth, height: chartHeight + 40, position: 'relative' }}>
+                  {/* Layer 1A: Underlying SVG line chart and X-axis dates */}
+                  <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, width: chartContentWidth }}>
+                    <LineChart
+                      data={chartData}
+                      width={chartContentWidth}
+                      height={chartHeight}
+                      spacing={calculatedSpacing}
+                      initialSpacing={50}
+                      endSpacing={76}
+                      color="#2962FF"
+                      thickness={2.5}
+                      startFillColor="#2962FF"
+                      endFillColor="#2962FF"
+                      startOpacity={0.25}
+                      endOpacity={0.01}
+                      hideYAxisText={true}
+                      yAxisLabelWidth={0}
+                      yAxisThickness={0}
+                      yAxisColor="transparent"
+                      xAxisColor="transparent"
+                      rulesLength={chartContentWidth}
+                      yAxisOffset={yAxisOffset}
+                      maxValue={maxYValue}
+                      noOfSections={4}
+                      rulesColor="#1A253C"
+                      rulesType="dotted"
+                      hideDataPoints={false}
+                      dataPointsRadius={3}
+                      dataPointsColor="#2962FF"
+                      maintainAspectRatio={false}
+                      disableScroll={true}
+                      xAxisLabelsHeight={24}
+                      labelsExtraHeight={16}
+                      overflowBottom={24}
+                      xAxisLabelTextStyle={{ 
+                        color: '#5C6B89', 
+                        fontSize: 11, 
+                        width: 80, 
+                        textAlign: 'center', 
+                        marginLeft: -40,
+                        transform: [{ rotate: '0deg' }]
+                      }}
+                    />
+                  </View>
+
+                  {/* Layer 1B: Vertical guideline for active point */}
+                  {selectedPoint && (
+                    <View
+                      pointerEvents="none"
+                      style={[styles.activeGuideLine, { left: selectedPoint.x, height: chartHeight }]}
+                    />
+                  )}
+
+                  {/* Layer 1C: Active highlighted dot */}
+                  {selectedPoint && (
+                    <View
+                      pointerEvents="none"
+                      style={[
+                        styles.activeDotRing,
+                        { left: selectedPoint.x - 10, top: selectedPoint.y - 10 },
+                      ]}
+                    >
+                      <View style={styles.activeDotCenter} />
+                    </View>
+                  )}
+
+                  {/* Layer 1D: Tooltip component explicitly imported and rendered inside the chart */}
+                  {selectedPoint && (
+                    <Tooltip
+                      visible={true}
+                      x={selectedPoint.x}
+                      y={selectedPoint.y}
+                      value={selectedPoint.value}
+                      date={selectedPoint.date}
+                      baseCurrency={baseCurrency}
+                      targetCurrency={targetCurrency}
+                      chartHeight={chartHeight}
+                      chartWidth={chartContentWidth}
+                    />
+                  )}
+
+                  {/* Layer 1E: Mobile-friendly touch targets across each column so tapping near line triggers label */}
+                  <View style={styles.touchOverlay}>
+                    {chartData.map((d, index) => {
+                      const colX = 50 + index * calculatedSpacing;
+                      const colWidth = calculatedSpacing;
+                      return (
+                        <TouchableOpacity
+                          key={index}
+                          activeOpacity={1}
+                          onPress={() => handlePointPress(d, index, colX)}
+                          style={[
+                            styles.touchColumn,
+                            {
+                              left: colX - colWidth / 2,
+                              width: colWidth,
+                              height: chartHeight + 30,
+                            },
+                          ]}
+                        />
+                      );
+                    })}
+                  </View>
                 </View>
               </ScrollView>
 
@@ -539,6 +650,46 @@ const styles = StyleSheet.create({
   },
   tfTextActive: {
     color: '#000000',
+  },
+  touchOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+  },
+  touchColumn: {
+    position: 'absolute',
+    top: 0,
+    backgroundColor: 'transparent',
+    zIndex: 15,
+  },
+  activeGuideLine: {
+    position: 'absolute',
+    top: 0,
+    width: 1,
+    backgroundColor: '#5C6B89',
+    opacity: 0.6,
+    zIndex: 21,
+  },
+  activeDotRing: {
+    position: 'absolute',
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(41, 98, 255, 0.3)',
+    borderWidth: 2,
+    borderColor: '#2962FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 22,
+  },
+  activeDotCenter: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FFFFFF',
   },
   tooltipContainer: {
     backgroundColor: '#1C1C1E',
