@@ -234,18 +234,9 @@ export default function HistoryChart() {
               <Text style={{ color: '#8A99AF' }}>No data available for this pair.</Text>
             </View>
           ) : (
-            /* Split layout: Fixed Y-axis container on left + Horizontally scrollable chart on right */
+            /* Split layout: Horizontally scrollable chart on left/center + Fixed Y-axis container permanently pinned on RIGHT */
             <View style={styles.splitChartLayout}>
-              {/* Fixed container on the left for the Y-axis (price labels pinned on screen) */}
-              <View style={[styles.fixedYAxisContainer, { height: chartHeight }]}>
-                {yAxisLabels.map((val, idx) => (
-                  <View key={idx} style={styles.yAxisLabelRow}>
-                    <Text style={styles.fixedYAxisText}>{val}</Text>
-                  </View>
-                ))}
-              </View>
-
-              {/* Overflow-x container on the right for the chart line and X-axis (min-width: 800px) */}
+              {/* Overflow-x container for the chart line and X-axis (min-width: 800px) */}
               <PinchGestureHandler
                 onGestureEvent={onPinchEvent}
                 onHandlerStateChange={onPinchStateChange}
@@ -318,6 +309,15 @@ export default function HistoryChart() {
                   />
                 </ScrollView>
               </PinchGestureHandler>
+
+              {/* Fixed container permanently pinned on the RIGHT for the Y-axis (price labels) */}
+              <View style={[styles.fixedYAxisContainer, { height: chartHeight }]}>
+                {yAxisLabels.map((val, idx) => (
+                  <View key={idx} style={styles.yAxisLabelRow}>
+                    <Text style={styles.fixedYAxisText}>{val}</Text>
+                  </View>
+                ))}
+              </View>
             </View>
           )}
         </View>
@@ -449,18 +449,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  // Split layout: Fixed Y-axis column on left + Horizontally scrollable chart on right
+  // Split layout: Horizontally scrollable chart on left + Fixed Y-axis column permanently pinned on RIGHT
   splitChartLayout: {
     flex: 1,
     flexDirection: 'row',
     width: '100%',
     minHeight: 0,
   },
+  scrollableChartArea: {
+    flex: 1,
+    minHeight: 0,
+  },
   fixedYAxisContainer: {
     width: 62,
     justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    paddingRight: 6,
+    alignItems: 'flex-start',
+    paddingLeft: 8,
     zIndex: 10,
   },
   yAxisLabelRow: {
@@ -470,11 +474,7 @@ const styles = StyleSheet.create({
   fixedYAxisText: {
     color: '#5C6B89',
     fontSize: 11,
-    textAlign: 'right',
-  },
-  scrollableChartArea: {
-    flex: 1,
-    minHeight: 0,
+    textAlign: 'left',
   },
   timeframeWrapper: {
     height: 48,
