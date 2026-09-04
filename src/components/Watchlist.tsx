@@ -178,36 +178,65 @@ export default function Watchlist() {
     const currentVal = (calcAmount / rateBase) * rateTarget;
     setEditingValue(currentVal.toFixed(4));
 
-    // Scroll the tapped item's input box into view above the keyboard
-    if (typeof index === 'number') {
-      setTimeout(() => {
+    // Scroll so the bottom of the input box attaches right to the top of the keyboard
+    const scrollInputToKeypad = () => {
+      if (Platform.OS === 'web') {
+        const rateBtnEl = document.querySelector(`[data-rate-btn="${code}"]`) as HTMLElement;
+        const rowEl = document.querySelector(`[data-currency-row="${code}"]`) as HTMLElement;
+        const targetEl = rateBtnEl || rowEl;
+
+        if (targetEl && targetEl.getBoundingClientRect) {
+          const scrollParent: HTMLElement | null =
+            (listRef.current?.getScrollableNode?.() as HTMLElement) ||
+            (() => {
+              let p = targetEl.parentElement;
+              while (p && p !== document.body) {
+                const s = window.getComputedStyle(p);
+                if ((s.overflowY === 'auto' || s.overflowY === 'scroll') && p.scrollHeight > p.clientHeight) {
+                  return p;
+                }
+                p = p.parentElement;
+              }
+              return null;
+            })();
+
+          const keypadEl = document.querySelector('.ios-keypad-overlay') as HTMLElement;
+          const keypadTop = keypadEl && keypadEl.getBoundingClientRect().top > 0
+            ? keypadEl.getBoundingClientRect().top
+            : (window.innerHeight - 288);
+
+          // Target: bottom of input box attaches directly to the top edge of the keyboard
+          const rect = targetEl.getBoundingClientRect();
+          const targetBottomY = keypadTop - 2;
+          const delta = rect.bottom - targetBottomY;
+
+          if (Math.abs(delta) > 2) {
+            if (scrollParent) {
+              scrollParent.scrollBy({ top: delta, behavior: 'smooth' });
+            } else {
+              window.scrollBy({ top: delta, behavior: 'smooth' });
+            }
+          }
+          return;
+        }
+      }
+
+      if (typeof index === 'number' && listRef.current) {
+        const itemBottomInList = (index + 1) * 68;
+        const screenH = typeof window !== 'undefined' ? window.innerHeight : 667;
+        const visibleHeightAboveKeypad = Math.max(100, screenH - 288 - 150);
+        const targetOffset = Math.max(0, itemBottomInList - visibleHeightAboveKeypad);
         try {
-          listRef.current?.scrollToIndex({
-            index,
-            viewPosition: 0.2, // Positions item comfortably in the upper half above the keyboard
+          listRef.current.scrollToOffset({
+            offset: targetOffset,
             animated: true,
           });
-        } catch (_) {
-          try {
-            listRef.current?.scrollToOffset({
-              offset: Math.max(0, index * 68 - 40),
-              animated: true,
-            });
-          } catch (__) {}
-        }
-      }, 50);
-    }
-
-    if (Platform.OS === 'web') {
-      const el = e?.currentTarget || e?.target;
-      if (el?.scrollIntoView) {
-        setTimeout(() => {
-          try {
-            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          } catch (_) {}
-        }, 60);
+        } catch (_) {}
       }
-    }
+    };
+
+    setTimeout(scrollInputToKeypad, 60);
+    setTimeout(scrollInputToKeypad, 160);
 
     if (e?.target?.select) {
       e.target.select();
@@ -478,6 +507,8 @@ export default function Watchlist() {
           Platform.OS === 'web' && itemWebStyle,
         ]}
         {...(Platform.OS === 'web' ? {
+          'data-currency-row': item.code,
+          'data-currency-code': item.code,
           draggable: true,
           onDragStart: (e: any) => handleDragStart(index, e),
           onDragOver: (e: any) => handleDragOver(index, e),
@@ -522,6 +553,7 @@ export default function Watchlist() {
             style={[styles.rateDisplayBtn, editingCurrency === item.code && styles.rateDisplayBtnActive]}
             onPress={(e) => handleFocus(item.code, index, e)}
             activeOpacity={0.7}
+            {...(Platform.OS === 'web' ? { 'data-rate-btn': item.code } as any : {})}
           >
             <Text
               style={[
