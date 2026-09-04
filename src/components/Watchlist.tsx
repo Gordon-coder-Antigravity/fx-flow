@@ -245,6 +245,23 @@ export default function Watchlist() {
     setEditingCurrency(null);
   };
 
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !editingCurrency) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.key >= '0' && e.key <= '9') || e.key === '.') {
+        handleKeypadPress(e.key);
+      } else if (e.key === 'Backspace') {
+        handleKeypadPress('backspace');
+      } else if (e.key === 'Enter' || e.key === 'Escape') {
+        handleKeypadDone();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [editingCurrency, editingValue]);
+
   const calculateAmount = (code: string): string => {
     if (editingCurrency === code) {
       if (editingValue === '') return '';
@@ -443,22 +460,28 @@ export default function Watchlist() {
         </TouchableOpacity>
 
         <View style={styles.rightContainer}>
-          <TextInput
-            style={[
-              styles.rateInput, 
-              isBase && styles.baseRateText,
-              { fontSize: dynamicFontSize }
-            ]}
-            value={amount}
-            onFocus={(e) => handleFocus(item.code, e)}
-            onChangeText={(text) => handleChangeAmount(item.code, text)}
-            onBlur={() => handleBlurFormat(item.code)}
-            keyboardType="numeric"
-            returnKeyType="done"
-            selectTextOnFocus={true}
-            editable={true}
-            numberOfLines={1}
-          />
+          <TouchableOpacity 
+            style={[styles.rateDisplayBtn, editingCurrency === item.code && styles.rateDisplayBtnActive]}
+            onPress={() => handleFocus(item.code)}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[
+                styles.rateInput, 
+                isBase && styles.baseRateText,
+                { fontSize: dynamicFontSize }
+              ]}
+              numberOfLines={1}
+            >
+              {amount}
+            </Text>
+            {editingCurrency === item.code && (
+              <View 
+                style={styles.rateCursor} 
+                {...(Platform.OS === 'web' ? { className: 'ios-cursor-blink' } : {})} 
+              />
+            )}
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => handleRemove(item.id)} style={styles.removeButton}>
             <Ionicons name="close-outline" size={20} color="#8A99AF" />
           </TouchableOpacity>
@@ -507,6 +530,32 @@ export default function Watchlist() {
           .ios-wobble-active {
             animation: iosWiggle 0.28s ease-in-out infinite !important;
             transform-origin: 50% 50% !important;
+          }
+          .ios-keypad-overlay {
+            position: fixed !important;
+            bottom: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            z-index: 99999 !important;
+            padding-bottom: max(22px, env(safe-area-inset-bottom, 22px)) !important;
+            backdrop-filter: blur(28px) !important;
+            -webkit-backdrop-filter: blur(28px) !important;
+          }
+          .ios-keypad-backdrop {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            z-index: 99990 !important;
+            background-color: transparent !important;
+          }
+          .ios-cursor-blink {
+            animation: iosBlink 1s infinite !important;
+          }
+          @keyframes iosBlink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
           }
         `}</style>
       )}
@@ -579,7 +628,17 @@ export default function Watchlist() {
 
       {/* iOS Frosted Numeric Keypad & Floating Done Button (matching Image 1) */}
       {editingCurrency && (
-        <View style={styles.keypadOverlay}>
+        <>
+          <TouchableOpacity 
+            style={styles.keypadBackdrop}
+            activeOpacity={1}
+            onPress={handleKeypadDone}
+            {...(Platform.OS === 'web' ? { className: 'ios-keypad-backdrop' } : {})}
+          />
+          <View 
+            style={styles.keypadOverlay}
+            {...(Platform.OS === 'web' ? { className: 'ios-keypad-overlay' } : {})}
+          >
           {/* Floating Done Button */}
           <View style={styles.doneBar}>
             <TouchableOpacity style={styles.doneButton} onPress={handleKeypadDone}>
@@ -646,7 +705,8 @@ export default function Watchlist() {
             </View>
           </View>
         </View>
-      )}
+      </>
+    )}
     </View>
   );
 }
@@ -805,14 +865,32 @@ const styles = StyleSheet.create({
     position: 'relative',
     zIndex: 10,
   },
+  rateDisplayBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    borderRadius: 6,
+  },
+  rateDisplayBtnActive: {
+    backgroundColor: 'rgba(0, 180, 216, 0.08)',
+  },
   rateInput: {
     color: '#FFFFFF',
     fontSize: 24,
     fontWeight: '300',
     textAlign: 'right',
-    flex: 1,
     maxWidth: '90%',
     paddingVertical: 4,
+  },
+  rateCursor: {
+    width: 2,
+    height: 24,
+    backgroundColor: '#00B4D8',
+    marginLeft: 2,
+    borderRadius: 1,
   },
   baseRateText: {
     color: '#00B4D8',
@@ -823,18 +901,26 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   // iOS Numeric Keypad Styles (Image 1)
+  keypadBackdrop: {
+    position: (Platform.OS === 'web' ? 'fixed' : 'absolute') as any,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 9998,
+  },
   keypadOverlay: {
-    position: 'absolute',
+    position: (Platform.OS === 'web' ? 'fixed' : 'absolute') as any,
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(200, 204, 212, 0.92)',
+    backgroundColor: 'rgba(215, 218, 226, 0.96)',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingTop: 8,
     paddingBottom: 24,
     paddingHorizontal: 6,
-    zIndex: 2000,
+    zIndex: 9999,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.35,
