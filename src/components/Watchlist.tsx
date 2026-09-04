@@ -238,7 +238,8 @@ export default function Watchlist() {
           activeOpacity={0.8}
         >
           <Text style={styles.codeText}>{item.code}</Text>
-          <Text style={styles.nameText}>{item.symbol} {item.name}</Text>
+          <Text style={styles.nameText}>{item.name}</Text>
+          <Text style={styles.symbolText}>{item.symbol}</Text>
         </TouchableOpacity>
 
         <View style={styles.rightContainer}>
@@ -454,7 +455,7 @@ const styles = StyleSheet.create({
     padding: 3,
   },
   infoContainer: {
-    flex: 1,
+    flex: 0.8,
     paddingRight: 8,
   },
   codeText: {
@@ -467,11 +468,16 @@ const styles = StyleSheet.create({
     color: '#8A99AF',
     fontSize: 11,
   },
+  symbolText: {
+    color: '#6B7A90',
+    fontSize: 10,
+    marginTop: 1,
+  },
   rightContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    flex: 1,
+    flex: 1.2,
     gap: 8,
     position: 'relative',
     zIndex: 10,
@@ -481,8 +487,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '300',
     textAlign: 'right',
-    width: '50%',
-    maxWidth: '50%',
+    flex: 1,
     paddingVertical: 4,
   },
   baseRateText: {
