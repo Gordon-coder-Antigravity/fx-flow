@@ -41,9 +41,10 @@ export default function Watchlist() {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [dragOffsetY, setDragOffsetY] = useState(0);
-  const isDraggingRef = useRef(false);
-  const startYRef = useRef(0);
-  const currentIndexRef = useRef<number | null>(null);
+
+  const sourceIndexRef = useRef<number | null>(null);
+  const targetIndexRef = useRef<number | null>(null);
+  const startYRef = useRef<number>(0);
   const watchlistRef = useRef<CurrencyData[]>([]);
   watchlistRef.current = watchlist;
 
@@ -126,6 +127,18 @@ export default function Watchlist() {
       setCalcBaseCurrency(updated[0].code);
       setCalcAmount(1);
     }
+  };
+
+  // Reorder helper
+  const reorder = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
+    setWatchlist(prev => {
+      const updated = [...prev];
+      if (fromIndex >= updated.length || toIndex >= updated.length) return prev;
+      const [moved] = updated.splice(fromIndex, 1);
+      updated.splice(toIndex, 0, moved);
+      return updated;
+    });
   };
 
   const formatThousands = (val: string) => {
@@ -227,57 +240,107 @@ export default function Watchlist() {
     return formatThousands(result.toFixed(4));
   };
 
-  // ---- Web iPhone Home Screen Drag and Drop System ----
-  const startDrag = (index: number, clientY: number) => {
+  // Safe clientY coordinate extraction across Touch and Pointer events
+  const extractClientY = (e: any): number => {
+    if (!e) return 0;
+    if (typeof e.clientY === 'number') return e.clientY;
+    if (e.nativeEvent && typeof e.nativeEvent.clientY === 'number') return e.nativeEvent.clientY;
+    if (e.nativeEvent && typeof e.nativeEvent.pageY === 'number') return e.nativeEvent.pageY;
+    if (e.touches && e.touches[0] && typeof e.touches[0].clientY === 'number') return e.touches[0].clientY;
+    if (e.nativeEvent?.touches && e.nativeEvent.touches[0] && typeof e.nativeEvent.touches[0].clientY === 'number') {
+      return e.nativeEvent.touches[0].clientY;
+    }
+    return 0;
+  };
+
+  // Pointer / Touch Dragging Handler
+  const handlePointerDown = (index: number, e: any) => {
     if (Platform.OS !== 'web') return;
-    isDraggingRef.current = true;
-    currentIndexRef.current = index;
+    const clientY = extractClientY(e);
+    sourceIndexRef.current = index;
+    targetIndexRef.current = index;
     startYRef.current = clientY;
     setDraggedIndex(index);
     setDragOverIndex(index);
     setDragOffsetY(0);
 
-    const onPointerMove = (e: PointerEvent | MouseEvent | TouchEvent) => {
-      if (!isDraggingRef.current || currentIndexRef.current === null) return;
-      const currentY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-      const diffY = currentY - startYRef.current;
-      setDragOffsetY(diffY);
+    const handlePointerMove = (ev: any) => {
+      if (sourceIndexRef.current === null) return;
+      const currentY = extractClientY(ev);
+      const diff = currentY - startYRef.current;
+      setDragOffsetY(diff);
 
-      // Approximate height of item is ~70px
-      const itemHeight = 70;
-      const shifted = Math.round(diffY / itemHeight);
-      const newTarget = Math.max(0, Math.min(watchlistRef.current.length - 1, currentIndexRef.current + shifted));
+      const shifted = Math.round(diff / 68);
+      const newTarget = Math.max(0, Math.min(watchlistRef.current.length - 1, sourceIndexRef.current + shifted));
+      targetIndexRef.current = newTarget;
       setDragOverIndex(newTarget);
     };
 
-    const onPointerUp = () => {
-      if (!isDraggingRef.current || currentIndexRef.current === null) return;
-      const source = currentIndexRef.current;
-      const target = dragOverIndex !== null ? dragOverIndex : source;
-
-      if (source !== target && target >= 0 && target < watchlistRef.current.length) {
-        const newList = [...watchlistRef.current];
-        const [moved] = newList.splice(source, 1);
-        newList.splice(target, 0, moved);
-        setWatchlist(newList);
+    const handlePointerUp = () => {
+      const src = sourceIndexRef.current;
+      const tgt = targetIndexRef.current;
+      if (src !== null && tgt !== null && src !== tgt) {
+        reorder(src, tgt);
       }
-
-      isDraggingRef.current = false;
-      currentIndexRef.current = null;
+      sourceIndexRef.current = null;
+      targetIndexRef.current = null;
       setDraggedIndex(null);
       setDragOverIndex(null);
       setDragOffsetY(0);
 
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', onPointerUp);
-      window.removeEventListener('touchmove', onPointerMove);
-      window.removeEventListener('touchend', onPointerUp);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('touchmove', handlePointerMove);
+      window.removeEventListener('touchend', handlePointerUp);
+      window.removeEventListener('mousemove', handlePointerMove);
+      window.removeEventListener('mouseup', handlePointerUp);
     };
 
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', onPointerUp);
-    window.addEventListener('touchmove', onPointerMove, { passive: false });
-    window.addEventListener('touchend', onPointerUp);
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('touchmove', handlePointerMove, { passive: false });
+    window.addEventListener('touchend', handlePointerUp);
+    window.addEventListener('mousemove', handlePointerMove);
+    window.addEventListener('mouseup', handlePointerUp);
+  };
+
+  // HTML5 Drag and Drop Handlers (for Desktop Web)
+  const handleDragStart = (index: number, e: any) => {
+    sourceIndexRef.current = index;
+    targetIndexRef.current = index;
+    setDraggedIndex(index);
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', String(index));
+    }
+  };
+
+  const handleDragOver = (index: number, e: any) => {
+    if (e.preventDefault) e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    targetIndexRef.current = index;
+    setDragOverIndex(index);
+  };
+
+  const handleDrop = (index: number, e: any) => {
+    if (e.preventDefault) e.preventDefault();
+    const src = sourceIndexRef.current ?? parseInt(e.dataTransfer?.getData('text/plain'), 10);
+    if (!isNaN(src) && src !== index) {
+      reorder(src, index);
+    }
+    sourceIndexRef.current = null;
+    targetIndexRef.current = null;
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+    setDragOffsetY(0);
+  };
+
+  const handleDragEnd = () => {
+    sourceIndexRef.current = null;
+    targetIndexRef.current = null;
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+    setDragOffsetY(0);
   };
 
   // Web Item Renderer with iPhone Home Screen Drag & Wobble
@@ -293,10 +356,9 @@ export default function Watchlist() {
     const isThisDragged = draggedIndex === index;
     const anyDragging = draggedIndex !== null;
 
-    // Calculate shift displacement for items displaced by dragged item
     let translateY = 0;
     if (anyDragging && !isThisDragged && dragOverIndex !== null && draggedIndex !== null) {
-      const itemHeight = 70;
+      const itemHeight = 68;
       if (draggedIndex < dragOverIndex && index > draggedIndex && index <= dragOverIndex) {
         translateY = -itemHeight;
       } else if (draggedIndex > dragOverIndex && index >= dragOverIndex && index < draggedIndex) {
@@ -309,7 +371,7 @@ export default function Watchlist() {
         ? `translateY(${dragOffsetY}px) scale(1.06)` 
         : `translateY(${translateY}px)`,
       zIndex: isThisDragged ? 999 : 1,
-      transition: isThisDragged ? 'none' : 'transform 0.24s cubic-bezier(0.2, 0, 0, 1)',
+      transition: isThisDragged ? 'none' : 'transform 0.22s cubic-bezier(0.2, 0, 0, 1)',
       cursor: isThisDragged ? 'grabbing' : 'default',
     };
 
@@ -321,6 +383,13 @@ export default function Watchlist() {
           isThisDragged && styles.itemContainerDragging,
           Platform.OS === 'web' && itemWebStyle,
         ]}
+        {...(Platform.OS === 'web' ? {
+          draggable: true,
+          onDragStart: (e: any) => handleDragStart(index, e),
+          onDragOver: (e: any) => handleDragOver(index, e),
+          onDrop: (e: any) => handleDrop(index, e),
+          onDragEnd: handleDragEnd,
+        } as any : {})}
       >
         {isBase && <View style={styles.baseIndicator} pointerEvents="none" />}
 
@@ -330,14 +399,16 @@ export default function Watchlist() {
           {...(Platform.OS === 'web' ? {
             onPointerDown: (e: any) => {
               e.preventDefault();
-              startDrag(index, e.clientY);
+              handlePointerDown(index, e);
+            },
+            onMouseDown: (e: any) => {
+              e.preventDefault();
+              handlePointerDown(index, e);
             },
             onTouchStart: (e: any) => {
-              if (e.touches?.[0]) {
-                startDrag(index, e.touches[0].clientY);
-              }
+              handlePointerDown(index, e);
             }
-          } : {})}
+          } as any : {})}
         >
           <Ionicons name="menu-outline" size={24} color={isThisDragged ? '#00B4D8' : '#8A99AF'} />
         </View>
@@ -676,7 +747,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     justifyContent: 'center',
     alignItems: 'center',
-    cursor: 'grab' as any,
   },
   infoContainer: {
     flex: 0.9,
