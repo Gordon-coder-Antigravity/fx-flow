@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, ActivityIndicator, LayoutChangeEvent } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
 import { Dropdown } from 'react-native-element-dropdown';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,6 +32,9 @@ export default function HistoryChart() {
 
   const [zoomScale, setZoomScale] = useState(1);
   const baseScale = useRef(1);
+
+  // Dynamic chart height to fill remaining vertical space
+  const [chartHeight, setChartHeight] = useState(240);
 
   const onPinchEvent = (event: PinchGestureHandlerGestureEvent) => {
     let newScale = baseScale.current * event.nativeEvent.scale;
@@ -114,15 +117,21 @@ export default function HistoryChart() {
     return Math.max(computed, 20);
   };
 
+  const onChartContainerLayout = (e: LayoutChangeEvent) => {
+    const { height } = e.nativeEvent.layout;
+    if (height > 0) {
+      // Reserve ~40px for X-axis labels and padding
+      const dynamicHeight = Math.max(160, Math.floor(height - 40));
+      setChartHeight(dynamicHeight);
+    }
+  };
+
   return (
-    <ScrollView 
-      style={styles.container} 
-      contentContainerStyle={[
-        styles.scrollContent, 
-        { paddingTop: Math.max(insets.top, 16) + 8, paddingBottom: 25 }
+    <View 
+      style={[
+        styles.container, 
+        { paddingTop: Math.max(insets.top, 16) + 8, paddingBottom: 16 }
       ]}
-      showsVerticalScrollIndicator={false}
-      bounces={false}
     >
       {/* Currency Selectors */}
       <View style={styles.selectorsContainer}>
@@ -191,10 +200,10 @@ export default function HistoryChart() {
         </View>
       </View>
 
-      {/* Responsive Chart & Period Container (flex-direction: column, fixed height, 16px gap) */}
-      <View style={styles.chartAndPeriodSection}>
-        {/* Chart Container */}
-        <View style={styles.chartContainer}>
+      {/* .chart-wrapper: Dynamically fills remaining vertical space using Flexbox (flex: 1) with 16px gap */}
+      <View style={styles.chartWrapper}>
+        {/* .chart-container: flex: 1 and min-height: 0 so chart stretches to become taller */}
+        <View style={styles.chartContainer} onLayout={onChartContainerLayout}>
           {loading ? (
             <View style={styles.loadingWrapper}>
               <ActivityIndicator color="#2962FF" size="large" />
@@ -212,7 +221,7 @@ export default function HistoryChart() {
                 <LineChart
                   data={chartData}
                   width={screenWidth - 85}
-                  height={185}
+                  height={chartHeight}
                   spacing={getSpacing() * zoomScale}
                   initialSpacing={15}
                   endSpacing={15}
@@ -249,7 +258,7 @@ export default function HistoryChart() {
                   hideDataPoints={false}
                   {...({ maintainAspectRatio: false } as any)}
                   pointerConfig={{
-                    pointerStripHeight: 185,
+                    pointerStripHeight: chartHeight,
                     pointerStripColor: '#5C6B89',
                     pointerStripWidth: 1,
                     pointerColor: '#2962FF',
@@ -273,7 +282,7 @@ export default function HistoryChart() {
           )}
         </View>
 
-        {/* Period Option Buttons */}
+        {/* Period Option Buttons row naturally pushed down to bottom */}
         <View style={styles.timeframeWrapper}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.timeframeContainer}>
             {TIMEFRAMES.map((tf) => (
@@ -288,7 +297,7 @@ export default function HistoryChart() {
           </ScrollView>
         </View>
       </View>
-    </ScrollView>
+    </View>
   );
 }
 
@@ -296,9 +305,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000000',
-  },
-  scrollContent: {
-    flexGrow: 1,
   },
   selectorsContainer: {
     flexDirection: 'row',
@@ -380,29 +386,33 @@ const styles = StyleSheet.create({
     color: '#5C6B89',
     fontSize: 14,
   },
-  // Fixed height, column flex container with 16px gap to guarantee no overlap across mobile sizes (iPhone SE 3 to Pro Max)
-  chartAndPeriodSection: {
+  // .chart-wrapper dynamically fills remaining vertical space using Flexbox (flex: 1) with 16px gap
+  chartWrapper: {
+    flex: 1,
     flexDirection: 'column',
-    height: 320,
     gap: 16,
     width: '100%',
     paddingHorizontal: 10,
     marginTop: 4,
   },
+  // .chart-container: flex: 1 and min-height: 0 so chart stretches to become taller
   chartContainer: {
     flex: 1,
+    minHeight: 0,
     width: '100%',
     justifyContent: 'center',
-    paddingBottom: 16, // Extra bottom padding to prevent clipping
+    paddingBottom: 12,
   },
   loadingWrapper: {
-    height: 185,
+    flex: 1,
+    minHeight: 180,
     justifyContent: 'center',
     alignItems: 'center',
   },
   timeframeWrapper: {
-    height: 46,
+    height: 48,
     justifyContent: 'center',
+    marginBottom: 4,
   },
   timeframeContainer: {
     paddingHorizontal: 16,
