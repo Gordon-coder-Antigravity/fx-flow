@@ -111,7 +111,7 @@ export default function HistoryChart() {
     if (chartData.length <= 1) return 20;
     const availableWidth = screenWidth - 100;
     const computed = availableWidth / Math.max(1, chartData.length - 1);
-    return Math.max(computed, 22);
+    return Math.max(computed, 20);
   };
 
   return (
@@ -119,7 +119,7 @@ export default function HistoryChart() {
       style={styles.container} 
       contentContainerStyle={[
         styles.scrollContent, 
-        { paddingTop: Math.max(insets.top, 16) + 8, paddingBottom: 30 }
+        { paddingTop: Math.max(insets.top, 16) + 8, paddingBottom: 25 }
       ]}
       showsVerticalScrollIndicator={false}
       bounces={false}
@@ -191,8 +191,9 @@ export default function HistoryChart() {
         </View>
       </View>
 
-      {/* Chart Section */}
-      <View style={styles.chartWrapper}>
+      {/* Responsive Chart & Period Container (flex-direction: column, fixed height, 16px gap) */}
+      <View style={styles.chartAndPeriodSection}>
+        {/* Chart Container */}
         <View style={styles.chartContainer}>
           {loading ? (
             <View style={styles.loadingWrapper}>
@@ -211,7 +212,7 @@ export default function HistoryChart() {
                 <LineChart
                   data={chartData}
                   width={screenWidth - 85}
-                  height={200}
+                  height={185}
                   spacing={getSpacing() * zoomScale}
                   initialSpacing={15}
                   endSpacing={15}
@@ -230,19 +231,30 @@ export default function HistoryChart() {
                   maxValue={maxYValue}
                   noOfSections={4}
                   yAxisTextStyle={{ color: '#5C6B89', fontSize: 11, textAlign: 'right', paddingRight: 4 }}
+                  // X-Axis Configuration: Upright (0 rotation), extra bottom padding to prevent clipping
                   xAxisLabelsHeight={24}
-                  xAxisLabelTextStyle={{ color: '#5C6B89', fontSize: 10, width: 70, textAlign: 'center', marginLeft: -25 }}
+                  labelsExtraHeight={16}
+                  overflowBottom={24}
+                  xAxisLabelTextStyle={{ 
+                    color: '#5C6B89', 
+                    fontSize: 11, 
+                    width: 76, 
+                    textAlign: 'center', 
+                    marginLeft: -28,
+                    transform: [{ rotate: '0deg' }]
+                  }}
                   formatYLabel={(label) => Number(label).toFixed(4)}
                   rulesColor="#1A253C"
                   rulesType="dotted"
                   hideDataPoints={false}
+                  {...({ maintainAspectRatio: false } as any)}
                   pointerConfig={{
-                    pointerStripHeight: 200,
+                    pointerStripHeight: 185,
                     pointerStripColor: '#5C6B89',
                     pointerStripWidth: 1,
                     pointerColor: '#2962FF',
                     radius: 5,
-                    pointerLabelWidth: 100,
+                    pointerLabelWidth: 110,
                     pointerLabelHeight: 80,
                     activatePointersOnLongPress: true,
                     autoAdjustPointerLabelPosition: true,
@@ -260,21 +272,21 @@ export default function HistoryChart() {
             </PinchGestureHandler>
           )}
         </View>
-      </View>
 
-      {/* Period / Timeframe Options */}
-      <View style={styles.timeframeWrapper}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.timeframeContainer}>
-          {TIMEFRAMES.map((tf) => (
-            <TouchableOpacity 
-              key={tf} 
-              style={[styles.tfButton, timeframe === tf && styles.tfButtonActive]}
-              onPress={() => setTimeframe(tf)}
-            >
-              <Text style={[styles.tfText, timeframe === tf && styles.tfTextActive]}>{tf}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        {/* Period Option Buttons */}
+        <View style={styles.timeframeWrapper}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.timeframeContainer}>
+            {TIMEFRAMES.map((tf) => (
+              <TouchableOpacity 
+                key={tf} 
+                style={[styles.tfButton, timeframe === tf && styles.tfButtonActive]}
+                onPress={() => setTimeframe(tf)}
+              >
+                <Text style={[styles.tfText, timeframe === tf && styles.tfTextActive]}>{tf}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
       </View>
     </ScrollView>
   );
@@ -293,7 +305,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 14,
+    marginBottom: 12,
   },
   pillContainer: {
     flexDirection: 'row',
@@ -368,24 +380,29 @@ const styles = StyleSheet.create({
     color: '#5C6B89',
     fontSize: 14,
   },
-  chartWrapper: {
+  // Fixed height, column flex container with 16px gap to guarantee no overlap across mobile sizes (iPhone SE 3 to Pro Max)
+  chartAndPeriodSection: {
+    flexDirection: 'column',
+    height: 320,
+    gap: 16,
     width: '100%',
     paddingHorizontal: 10,
     marginTop: 4,
   },
   chartContainer: {
-    minHeight: 235,
-    paddingBottom: 10,
+    flex: 1,
+    width: '100%',
     justifyContent: 'center',
+    paddingBottom: 16, // Extra bottom padding to prevent clipping
   },
   loadingWrapper: {
-    height: 200,
+    height: 185,
     justifyContent: 'center',
     alignItems: 'center',
   },
   timeframeWrapper: {
-    marginTop: 10,
-    marginBottom: 20,
+    height: 46,
+    justifyContent: 'center',
   },
   timeframeContainer: {
     paddingHorizontal: 16,
