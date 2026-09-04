@@ -256,20 +256,37 @@ export default function HistoryChart() {
 
   const handlePointerDown = (e: any) => {
     if (Platform.OS !== 'web') return;
+    if (e.stopPropagation) e.stopPropagation();
     isPointerDown.current = true;
     const x = getEventX(e);
     updateHighlightAtX(x);
   };
 
   const handlePointerMove = (e: any) => {
-    if (Platform.OS !== 'web' || !isPointerDown.current) return;
+    if (Platform.OS !== 'web') return;
+    if (e.stopPropagation) e.stopPropagation();
+    if (!isPointerDown.current) return;
     const x = getEventX(e);
     updateHighlightAtX(x);
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (e: any) => {
     if (Platform.OS !== 'web') return;
+    if (e.stopPropagation) e.stopPropagation();
     isPointerDown.current = false;
+  };
+
+  const handleWheel = (e: any) => {
+    if (Platform.OS !== 'web') return;
+    const deltaY = e.nativeEvent?.deltaY ?? e.deltaY ?? 0;
+    if (deltaY !== 0) {
+      if (e.stopPropagation) e.stopPropagation();
+      // Use a smaller increment for smoother wheel zooming
+      setZoomLevel(prev => {
+        const increment = deltaY < 0 ? 0.2 : -0.2;
+        return Math.max(1, Math.min(3, Math.round((prev + increment) * 10) / 10));
+      });
+    }
   };
 
   // Compute 5 fixed Y-axis labels matching the 4 grid line sections
@@ -414,19 +431,7 @@ export default function HistoryChart() {
                   onMouseLeave: handleMouseUp,
                 } : {})}
               >
-                <View 
-                  ref={chartInnerViewRef}
-                  style={{ width: chartContentWidth, height: chartHeight + 40, position: 'relative' }}
-                  onTouchStart={handleTouchStart}
-                  onTouchMove={handleTouchMove}
-                  onTouchEnd={handleTouchEnd}
-                  {...(Platform.OS === 'web' ? {
-                    onMouseDown: handlePointerDown,
-                    onMouseMove: handlePointerMove,
-                    onMouseUp: handlePointerUp,
-                    onMouseLeave: handlePointerUp,
-                  } : {})}
-                >
+                <View style={{ width: chartContentWidth, height: chartHeight + 40, position: 'relative' }}>
                   {/* Layer 1A: Underlying SVG line chart and X-axis dates */}
                   <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, width: chartContentWidth }}>
                     <LineChart
@@ -472,41 +477,60 @@ export default function HistoryChart() {
                     />
                   </View>
 
-                  {/* Layer 1B: Vertical guideline for active point (rendered only when tapped/sliding) */}
-                  {selectedPoint && (
-                    <View
-                      pointerEvents="none"
-                      style={[styles.activeGuideLine, { left: selectedPoint.x, height: chartHeight }]}
-                    />
-                  )}
+                  {/* Layer 1B: Touch Overlay exclusively for chart body (prevents panning, handles scrubber & zoom) */}
+                  <View 
+                    ref={chartInnerViewRef}
+                    style={{ position: 'absolute', top: 0, left: 0, width: chartContentWidth, height: chartHeight }}
+                    onStartShouldSetResponder={() => true}
+                    onMoveShouldSetResponder={() => true}
+                    onResponderGrant={handleTouchStart}
+                    onResponderMove={handleTouchMove}
+                    onResponderRelease={handleTouchEnd}
+                    onResponderTerminate={handleTouchEnd}
+                    {...(Platform.OS === 'web' ? {
+                      onMouseDown: handlePointerDown,
+                      onMouseMove: handlePointerMove,
+                      onMouseUp: handlePointerUp,
+                      onMouseLeave: handlePointerUp,
+                      onWheel: handleWheel,
+                    } : {})}
+                  >
+                    {/* Vertical guideline for active point */}
+                    {selectedPoint && (
+                      <View
+                        pointerEvents="none"
+                        style={[styles.activeGuideLine, { left: selectedPoint.x, height: chartHeight }]}
+                      />
+                    )}
 
-                  {/* Layer 1C: Active highlighted dot (rendered only when tapped/sliding) */}
-                  {selectedPoint && (
-                    <View
-                      pointerEvents="none"
-                      style={[
-                        styles.activeDotRing,
-                        { left: selectedPoint.x - 10, top: selectedPoint.y - 10 },
-                      ]}
-                    >
-                      <View style={styles.activeDotCenter} />
-                    </View>
-                  )}
+                    {/* Active highlighted dot */}
+                    {selectedPoint && (
+                      <View
+                        pointerEvents="none"
+                        style={[
+                          styles.activeDotRing,
+                          { left: selectedPoint.x - 10, top: selectedPoint.y - 10 },
+                        ]}
+                      >
+                        <View style={styles.activeDotCenter} />
+                      </View>
+                    )}
 
-                  {/* Layer 1D: Interactive Tooltip component (rendered only when tapped/sliding) */}
-                  {selectedPoint && (
-                    <Tooltip
-                      visible={true}
-                      x={selectedPoint.x}
-                      y={selectedPoint.y}
-                      value={selectedPoint.value}
-                      date={selectedPoint.date}
-                      baseCurrency={baseCurrency}
-                      targetCurrency={targetCurrency}
-                      chartHeight={chartHeight}
-                      chartWidth={chartContentWidth}
-                    />
-                  )}
+                    {/* Interactive Tooltip component */}
+                    {selectedPoint && (
+                      <Tooltip
+                        visible={true}
+                        x={selectedPoint.x}
+                        y={selectedPoint.y}
+                        value={selectedPoint.value}
+                        date={selectedPoint.date}
+                        baseCurrency={baseCurrency}
+                        targetCurrency={targetCurrency}
+                        chartHeight={chartHeight}
+                        chartWidth={chartContentWidth}
+                      />
+                    )}
+                  </View>
                 </View>
               </ScrollView>
 
