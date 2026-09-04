@@ -84,6 +84,12 @@ export default function CurrencyItem({
       } catch (_) {}
     }, 50);
   };
+  
+  // Dynamically reduce font size for long numbers to prevent overflow
+  const dynamicFontSize = 
+    amount.length > 15 ? 15 :
+    amount.length > 13 ? 18 :
+    amount.length > 11 ? 20 : 24;
 
   return (
     <ScaleDecorator>
@@ -106,7 +112,11 @@ export default function CurrencyItem({
 
         <View style={styles.rightContainer}>
           <TextInput
-            style={[styles.rateInput, isBase && styles.baseRateText]}
+            style={[
+              styles.rateInput, 
+              isBase && styles.baseRateText,
+              { fontSize: dynamicFontSize }
+            ]}
             value={amount}
             onFocus={handleInputFocus}
             onChangeText={(text) => onChangeAmount(item.code, text)}

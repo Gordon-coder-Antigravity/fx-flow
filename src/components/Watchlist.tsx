@@ -210,6 +210,13 @@ export default function Watchlist() {
   const renderWebItem = ({ item, index }: { item: CurrencyData; index: number }) => {
     const isBase = (editingCurrency || calcBaseCurrency) === item.code;
     const amount = calculateAmount(item.code);
+    
+    // Dynamically reduce font size for long numbers to prevent overflow
+    const dynamicFontSize = 
+      amount.length > 15 ? 15 :
+      amount.length > 13 ? 18 :
+      amount.length > 11 ? 20 : 24;
+
     return (
       <View style={[styles.itemContainer, isBase && styles.itemContainerBase]}>
         {isBase && <View style={styles.baseIndicator} pointerEvents="none" />}
@@ -244,7 +251,11 @@ export default function Watchlist() {
 
         <View style={styles.rightContainer}>
           <TextInput
-            style={[styles.rateInput, isBase && styles.baseRateText]}
+            style={[
+              styles.rateInput, 
+              isBase && styles.baseRateText,
+              { fontSize: dynamicFontSize }
+            ]}
             value={amount}
             onFocus={(e) => handleFocus(item.code, e)}
             onChangeText={(text) => handleChangeAmount(item.code, text)}
