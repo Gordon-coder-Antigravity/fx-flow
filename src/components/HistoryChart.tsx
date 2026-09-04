@@ -58,87 +58,118 @@ export default function HistoryChart() {
   useEffect(() => {
     if (Platform.OS !== 'web' || !chartContainerRef.current) return;
 
-    // Dynamically require lightweight-charts so it doesn't break Native Metro builds
-    const { createChart } = require('lightweight-charts');
+    let chart: any = null;
+    let resizeObserver: ResizeObserver | null = null;
+    let isMounted = true;
 
-    const chart = createChart(chartContainerRef.current, {
-      layout: {
-        background: { type: 'solid', color: 'transparent' },
-        textColor: '#8A99AF',
-      },
-      grid: {
-        vertLines: { visible: false },
-        horzLines: { visible: false },
-      },
-      rightPriceScale: {
-        visible: true,
-        borderVisible: false,
-      },
-      timeScale: {
-        borderVisible: false,
-        fixLeftEdge: true,
-        fixRightEdge: true,
-      },
-      localization: {
-        locale: 'en-US',
-      },
-      handleScroll: true,
-      handleScale: true,
-    });
+    const initChart = async () => {
+      try {
+        const lwCharts = await import('lightweight-charts');
+        if (!isMounted || !chartContainerRef.current) return;
 
-    chartRef.current = chart;
+        // Ensure container has valid dimensions to prevent fatal crash
+        const width = chartContainerRef.current.clientWidth || 300;
+        const height = chartContainerRef.current.clientHeight || 300;
 
-    const lineSeries = chart.addAreaSeries({
-      lineColor: '#2962FF',
-      topColor: 'rgba(41, 98, 255, 0.4)',
-      bottomColor: 'rgba(41, 98, 255, 0.0)',
-      lineWidth: 2,
-    });
-    seriesRef.current = lineSeries;
+        chart = lwCharts.createChart(chartContainerRef.current, {
+          width,
+          height,
+          layout: {
+            background: { type: 'solid', color: 'transparent' },
+            textColor: '#8A99AF',
+          },
+          grid: {
+            vertLines: { visible: false },
+            horzLines: { visible: false },
+          },
+          rightPriceScale: {
+            visible: true,
+            borderVisible: false,
+          },
+          timeScale: {
+            borderVisible: false,
+            fixLeftEdge: true,
+            fixRightEdge: true,
+          },
+          localization: {
+            locale: 'en-US',
+          },
+          handleScroll: true,
+          handleScale: true,
+        });
 
-    const resizeObserver = new ResizeObserver(entries => {
-      if (entries.length === 0 || entries[0].target !== chartContainerRef.current) return;
-      const newRect = entries[0].contentRect;
-      chart.applyOptions({ width: newRect.width, height: newRect.height });
-    });
-    resizeObserver.observe(chartContainerRef.current);
+        chartRef.current = chart;
+
+        const lineSeries = chart.addAreaSeries({
+          lineColor: '#2962FF',
+          topColor: 'rgba(41, 98, 255, 0.4)',
+          bottomColor: 'rgba(41, 98, 255, 0.0)',
+          lineWidth: 2,
+        });
+        seriesRef.current = lineSeries;
+
+        if (chartData && chartData.length > 0) {
+          applyDataToSeries(chartData, lineSeries, chart);
+        }
+
+        resizeObserver = new ResizeObserver(entries => {
+          if (entries.length === 0 || entries[0].target !== chartContainerRef.current) return;
+          const newRect = entries[0].contentRect;
+          if (chart && newRect.width > 0 && newRect.height > 0) {
+            chart.applyOptions({ width: newRect.width, height: newRect.height });
+          }
+        });
+        resizeObserver.observe(chartContainerRef.current);
+      } catch (err) {
+        console.error('Fatal Lightweight Charts Error:', err);
+      }
+    };
+
+    initChart();
 
     return () => {
-      resizeObserver.disconnect();
-      chart.remove();
+      isMounted = false;
+      if (resizeObserver) resizeObserver.disconnect();
+      if (chart) {
+        try { chart.remove(); } catch (e) { console.error('Error removing chart:', e); }
+      }
       chartRef.current = null;
       seriesRef.current = null;
     };
-  }, []);
+  }, []); // Run only once on mount
 
-  // Update Data in Lightweight Charts
+  // Update Data in Lightweight Charts when chartData changes
   useEffect(() => {
-    if (Platform.OS !== 'web' || !seriesRef.current || chartData.length === 0) return;
-
-    // Map to { time, value } format
-    const formattedData = chartData.map(d => ({
-      time: d.timestamp,
-      value: d.value,
-    }));
-
-    // Ensure strict chronological order and unique timestamps
-    const uniqueData: any[] = [];
-    const seen = new Set();
-    for (const d of formattedData) {
-      if (!seen.has(d.time)) {
-        seen.add(d.time);
-        uniqueData.push(d);
-      }
-    }
-    uniqueData.sort((a, b) => a.time - b.time);
-
-    try {
-      seriesRef.current.setData(uniqueData);
-      chartRef.current?.timeScale().fitContent();
-    } catch (e) {
-      console.warn('Lightweight charts data error', e);
+    if (Platform.OS === 'web' && seriesRef.current && chartRef.current && chartData.length > 0) {
+      applyDataToSeries(chartData, seriesRef.current, chartRef.current);
     }
   }, [chartData]);
+
+  const applyDataToSeries = (data: ChartDataPoint[], series: any, chartInst: any) => {
+    try {
+      // Map to strict { time, value } format and sanitize
+      const formattedData = data.map(d => ({
+        time: typeof d.timestamp === 'number' && !isNaN(d.timestamp) ? d.timestamp : 0,
+        value: typeof d.value === 'number' && !isNaN(d.value) ? d.value : 0,
+      })).filter(d => d.time > 0);
+
+      // Ensure strict chronological order and unique timestamps
+      const uniqueData: any[] = [];
+      const seen = new Set();
+      for (const d of formattedData) {
+        if (!seen.has(d.time)) {
+          seen.add(d.time);
+          uniqueData.push(d);
+        }
+      }
+      uniqueData.sort((a, b) => a.time - b.time);
+
+      series.setData(uniqueData);
+      chartInst.timeScale().fitContent();
+    } catch (e) {
+      console.error('Lightweight charts data formatting error:', e);
+    }
+  };
 
   const handleSwap = () => {
     setBaseCurrency(targetCurrency);
