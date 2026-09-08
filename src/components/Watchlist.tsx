@@ -19,7 +19,7 @@ if (Platform.OS !== 'web') {
   }
 }
 
-const INITIAL_WATCHLIST = ['USD', 'TWD', 'JPY', 'SGD'];
+const INITIAL_WATCHLIST = ['USD', 'TWD', 'JPY'];
 const API_BASE_CURRENCY = 'USD';
 
 export default function Watchlist() {
@@ -29,7 +29,7 @@ export default function Watchlist() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<string>('');
-  const [selectedCurrency, setSelectedCurrency] = useState('SGD');
+  const [selectedCurrency, setSelectedCurrency] = useState('EUR');
 
   // Global calculation state
   const [calcBaseCurrency, setCalcBaseCurrency] = useState('USD');
@@ -60,10 +60,8 @@ export default function Watchlist() {
       if (storedWatchlist) {
         const parsed = JSON.parse(storedWatchlist);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          savedCodes = parsed;
-          if (!savedCodes.includes('SGD')) {
-            savedCodes = [...savedCodes, 'SGD'];
-          }
+          savedCodes = parsed.filter(c => c !== 'SGD');
+          if (savedCodes.length === 0) savedCodes = INITIAL_WATCHLIST;
         }
       }
     } catch (e) {
