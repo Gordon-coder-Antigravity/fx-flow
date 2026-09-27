@@ -9,6 +9,7 @@ export const AVAILABLE_CURRENCIES = [
   { label: 'GBP - British Pound', value: 'GBP', code: 'GBP', symbol: '£' },
   { label: 'AUD - Australian Dollar', value: 'AUD', code: 'AUD', symbol: 'A$' },
   { label: 'SGD - Singapore Dollar', value: 'SGD', code: 'SGD', symbol: 'S$' },
+  { label: 'KRW - South Korean Won', value: 'KRW', code: 'KRW', symbol: '₩' },
   { label: 'PHP - Philippine Peso', value: 'PHP', code: 'PHP', symbol: '₱' },
   { label: 'TRY - Turkish Lira', value: 'TRY', code: 'TRY', symbol: '₺' },
 ];
